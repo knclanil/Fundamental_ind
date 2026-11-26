@@ -1,2 +1,9 @@
-# Fundamental_ind
-This is Fundamental Data pipeline project. 
+# Fundamental_ind — initial ingestion release
+
+Upload the contents (including `.github/workflows/pipeline.yml`) to the root of the existing repository on main. The workflow runs on push and every four hours. Existing secrets TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are used; no token is needed locally. Check Actions → Fundamental ingestion for results. Do not enable paid overages.
+
+Local tests: `pip install -r requirements.txt` then `python -m pytest -q`. Local database: `python pipeline.py init --local test.db`. Commands refresh, work and report accept the same local argument. Production commands use Turso HTTP v2 pipeline. No credentials are committed.
+
+This initial release implements Nifty 500 membership snapshots, NSE legacy financial filings and candidate supplementary endpoints, year-based persistent tasks, XBRL instance fact extraction, document hashes, metadata and idempotent inserts. It is NOT the complete master specification. All live endpoints and Turso authentication remain untested. PDF extraction, integrated filings from 2025, BSE adapters, canonical normalization, cross-exchange reconciliation, accounting validation, official quota monitoring, backup and permanent document archive are not implemented. Empty discovery results are not evidence of complete coverage. The queue targets 15 years and is not a guarantee of availability. The scheduling policy prioritizes outstanding backfill over recurring refresh tasks; daily freshness is not guaranteed. Legacy API parameters may require adjustment after live tests. No access controls are bypassed. Confirm exchange permissions before enabling collection. 
+
+Research references: https://bennythadikaran.github.io/NseIndiaApi/api.html (distinguishes legacy and integrated results); https://github.com/Jayadityas/Financial-results-extraction-using-NSE-BSE-APIs (reference only); https://turso.tech/pricing (listed free allowance 5 GB, 500M rows read and 10M rows written monthly; account-wide usage not automatically enforced by this release).
