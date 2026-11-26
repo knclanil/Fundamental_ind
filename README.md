@@ -10,3 +10,9 @@ NSE legacy/integrated, ownership, actions, announcements, annual report and BSE 
 
 ### NSE route repair
 Integrated financial discovery uses `/api/integrated-filing-results` with type and pagination; legacy discovery explicitly requests reporting periods. A one-time migration requeues affected unsuccessful NSE jobs. Integrated years before 2025 are marked not applicable. Annual report discovery uses symbol and filters by ending year, but records lacking company identity remain excluded. Sources: https://github.com/jugaad-py/jugaad-data/blob/master/jugaad_data/nse/live.py and https://bennythadikaran.github.io/NseIndiaApi/api.html . Live runner verification remains necessary; financial facts are not independently certified.
+
+## Coverage-driven corrective build
+
+Includes strict SQL parameter binding, financial-first task allocations, exclusion of pre-2025 integrated jobs, additional exact identifier aliases, and diagnostics for unattributed records. Coverage reports distinguish ownership from financial facts, include all active companies, legacy dataset counts, source/job health, document issues, candidate statement periods, and an estimated database size. Candidate statements are not certified complete. The configurable `DATABASE_BYTE_BUDGET` defaults to 400 MB as a conservative application decision, not an official Turso limit; page estimates may be unavailable remotely. The worker warns at 70%, pauses historical work at 95%, and refuses work at 100% at batch start. This is not account-wide quota enforcement.
+
+Local tests use synthetic fixtures. Live NSE/BSE endpoints, BSE mappings, production database counts, accounting reconciliation, independent verification, PDF extraction, and permanent backups remain unverified or incomplete. No production data has been modified by local testing. The existing source adapters remain candidates; diagnostics are intended to reveal response field mismatches without attributing unknown records to a company.
