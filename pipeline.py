@@ -1,5 +1,5 @@
 import os, sqlite3, json, csv, io, hashlib, datetime as dt, time, argparse
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 import requests
 from defusedxml import ElementTree as ET
 from decimal import Decimal, InvalidOperation
@@ -42,18 +42,35 @@ class DB:
         return out
     def run(self,s,*a): return self.batch([(s,a)])[0]
     def init(self): self.batch([(s,()) for s in SCHEMA])
+class SourceError(RuntimeError):
+    def __init__(self,message,systemic=False):
+        super().__init__(message); self.systemic=systemic
+
 class Source:
     def __init__(self): self.s=requests.Session(); self.s.headers.update({'User-Agent':'Fundamental_ind research pipeline/1.0','Accept':'*/*'})
     def get(self,url,params=None):
-        host=urlparse(url).hostname or ''
-        if urlparse(url).scheme!='https' or not any(host==d or host.endswith('.'+d) for d in ('nseindia.com','nseindia.in','niftyindices.com','bseindia.com')): raise ValueError('Unapproved source URL')
-        time.sleep(0.8); r=self.s.get(url,params=params,timeout=45,allow_redirects=False); r.raise_for_status()
-        if r.status_code!=200: raise RuntimeError(f'Unexpected HTTP {r.status_code}')
-        if len(r.content)>30_000_000: raise ValueError('Document exceeds limit')
-        return r.content
+        for hop in range(4):
+            host=urlparse(url).hostname or ''
+            if urlparse(url).scheme!='https' or not any(host==d or host.endswith('.'+d) for d in ('nseindia.com','nseindia.in','niftyindices.com','bseindia.com')): raise SourceError('Unapproved source URL')
+            time.sleep(0.8)
+            try:
+                r=self.s.get(url,params=params,timeout=30,allow_redirects=False)
+            except requests.RequestException as e:
+                raise SourceError(f'{host}: {type(e).__name__}',True) from e
+            if r.status_code in (301,302,303,307,308):
+                target=r.headers.get('Location','')
+                if not target: raise SourceError(f'{host}: redirect without location',True)
+                url=urljoin(r.url,target); params=None
+                continue
+            if r.status_code!=200:
+                raise SourceError(f'{host}{urlparse(url).path}: HTTP {r.status_code}',r.status_code in (401,403,429,500,502,503,504))
+            if len(r.content)>30_000_000: raise SourceError('Document exceeds limit')
+            return r.content
+        raise SourceError('Too many source redirects',True)
     def rows(self,path,params):
-        data=json.loads(self.get(BASE+path,params))
-        if not isinstance(data,list) or any(not isinstance(x,dict) for x in data): raise ValueError('Unexpected exchange response schema')
+        try: data=json.loads(self.get(BASE+path,params))
+        except (ValueError,UnicodeError) as e: raise SourceError(f'{path}: non-JSON response',True) from e
+        if not isinstance(data,list) or any(not isinstance(x,dict) for x in data): raise SourceError(f'{path}: unexpected exchange response schema',True)
         return data
 
 def parse_xml(raw):
@@ -102,7 +119,8 @@ def ingest(db,source,isin,symbol,dataset,year):
                     status='parsed'
                 db.run('INSERT OR IGNORE INTO documents VALUES(?,?,?,?,?)',fid,val,sha,len(raw),status)
             except Exception as e:
-                failures+=1; print('Document failure',type(e).__name__)
+                failures+=1; print('Document failure',type(e).__name__,str(e)[:300]);
+                if isinstance(e,SourceError) and e.systemic: raise
     if failures: raise RuntimeError(f'{failures} document failures')
     return len(rows)
 
@@ -111,12 +129,16 @@ def work(db,source,limit):
     errors=0
     for isin,symbol,dataset,year,attempts in tasks:
         year=int(year); attempts=int(attempts)
+        last_error=None
         try:
             n=ingest(db,source,isin,symbol,dataset,year); status='refresh' if year>=dt.date.today().year-1 else 'done'; delay=1 if status=='refresh' else 365; err=None; attempts=0
             print(symbol,dataset,year,n,'discovered')
         except Exception as e:
-            errors+=1; status='retry'; attempts+=1; delay=min(30,2**min(attempts,5)); err=type(e).__name__; print(symbol,dataset,year,err)
+            last_error=e
+            errors+=1; status='retry'; attempts+=1; delay=min(30,2**min(attempts,5)); err=f'{type(e).__name__}: {str(e)[:400]}' if isinstance(e,SourceError) else type(e).__name__; print(symbol,dataset,year,err)
         db.run('UPDATE tasks SET status=?,attempts=?,next_try=?,error=? WHERE isin=? AND dataset=? AND year=?',status,attempts,(dt.datetime.now(UTC)+dt.timedelta(days=delay)).isoformat(),err,isin,dataset,year)
+        if status=='retry' and isinstance(last_error,SourceError) and last_error.systemic:
+            print('Source circuit breaker: remaining tasks left untouched'); break
     if errors: raise RuntimeError(f'{errors} tasks failed; retry persisted')
 
 def main():
