@@ -42,6 +42,7 @@ def test_worker_strict_sql(tmp_path, monkeypatch):
     year=reliable.dt.date.today().year
     db.run("INSERT INTO companies(isin,symbol) VALUES('X','TEST')")
     db.run("INSERT INTO v2_listings VALUES('X','NSE','TEST')")
+    db.run("INSERT INTO pilot_members VALUES('TEST')")
     for y,state in [(year,'pending'),(year-2,'pending'),(year-3,'not_applicable')]:
         db.run("INSERT INTO v2_jobs(isin,source,dataset,year,state) VALUES('X','NSE','legacy',?,?)",y,state)
     seen=[]

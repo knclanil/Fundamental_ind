@@ -2,6 +2,9 @@
 import datetime as dt, json, csv, os, re, argparse, io
 from decimal import Decimal, InvalidOperation
 from quality import audit, storage
+import pilot
+from html.entities import name2codepoint
+from urllib.parse import urlparse, unquote
 from pipeline import DB, Source, SourceError, ET, digest, dump, now, UNIVERSE, UTC
 
 DDL=[
@@ -20,7 +23,9 @@ BSE={'results':'FinancialResult/w','announcements':'AnnGetData/w'}
 
 def init(db):
     db.init()
+    pilot.init(db)
     for s in DDL: db.run(s)
+    db.run("CREATE VIEW IF NOT EXISTS pilot_verified_financial_data AS SELECT * FROM v2_financial_data WHERE 1=0")
     db.run("CREATE TABLE IF NOT EXISTS v2_migrations(name TEXT PRIMARY KEY)")
     db.run("UPDATE v2_jobs SET state='not_applicable' WHERE source='NSE' AND dataset='integrated' AND year<2025 AND state='pending'")
     if not db.run("SELECT 1 FROM v2_migrations WHERE name='nse_routes_fix'"):
@@ -31,6 +36,7 @@ def chunks(db,items,n=75):
     for i in range(0,len(items),n): db.batch(items[i:i+n])
 
 def parse(raw,scope='unknown'):
+    raw=re.sub(rb"&([A-Za-z][A-Za-z0-9]+);", lambda m: ("&#%d;" % name2codepoint[m[1].decode()]).encode() if m[1].decode() in name2codepoint and m[1] not in (b"amp",b"lt",b"gt",b"quot",b"apos") else m[0], raw)
     root=ET.fromstring(raw)
     if root.tag!=NS+'xbrl': raise ValueError('Unsupported document: expected XBRL instance')
     # Expand QName-valued units and dimensions using in-scope namespace bindings.
@@ -98,9 +104,9 @@ def refresh(db,source):
     except Exception as e: print('BSE listing unavailable:',str(e)[:250])
     for exchange,ds in [('NSE',NSE),('BSE',BSE)]:
         for dataset in ds:
-            for y in range(year-15,year+1):
+            for y in range(pilot.bounds()[0].year,year+1):
                 if exchange=='NSE' and dataset=='integrated' and y<2025: continue
-                db.run('INSERT OR IGNORE INTO v2_jobs(isin,source,dataset,year) SELECT l.isin,l.source,?,? FROM v2_listings l JOIN companies c ON c.isin=l.isin WHERE l.source=? AND c.active=1',dataset,y,exchange)
+                db.run('INSERT OR IGNORE INTO v2_jobs(isin,source,dataset,year) SELECT l.isin,l.source,?,? FROM v2_listings l JOIN companies c ON c.isin=l.isin WHERE l.source=? AND c.active=1 AND c.symbol IN (SELECT symbol FROM pilot_members)',dataset,y,exchange)
 
 def discover(source,exchange,code,dataset,year):
     end=min(dt.date(year,12,31),dt.date.today()); start=dt.date(year,1,1)
@@ -151,7 +157,7 @@ def ingest(db,source,isin,exchange,code,dataset,year):
         # Only ISO dates are safe for lexical as-of queries; original retained in metadata.
         try: pub=dt.datetime.fromisoformat(pub).isoformat() if pub and 'T' in pub else dt.date.fromisoformat(pub).isoformat() if pub else None
         except (ValueError,TypeError): pub=None
-        urls={v for k,v in row.items() if isinstance(v,str) and v.startswith('https://') and any(x in k.lower() for x in ('xbrl','attach','pdf','xml','filename'))}
+        urls={v for k,v in row.items() if isinstance(v,str) and v.startswith('https://') and unquote(urlparse(v).path).rstrip('/').rsplit('/',1)[-1].lower() not in ('','null','none','undefined','nan') and any(x in k.lower() for x in ('xbrl','attach','pdf','xml','filename'))}
         mid=digest(dump([isin,exchange,dataset,meta]).encode()); db.run('INSERT OR IGNORE INTO v2_filings VALUES(?,?,?,?,?,?,?,?,?,?)',mid,isin,exchange,dataset,None,None,pub,now(),meta,'metadata'); metadata+=1
         for url in sorted(urls):
             try:
@@ -184,9 +190,11 @@ def work(db,source,limit):
         for exchange,datasets in [('NSE',NSE),('BSE',BSE)]:
             for dataset in datasets:
                 if budget<=0: break
-                jobs=db.run('SELECT j.isin,l.code,j.year,j.attempts FROM v2_jobs j JOIN v2_listings l ON l.isin=j.isin AND l.source=j.source JOIN companies c ON c.isin=j.isin WHERE c.active=1 AND j.source=? AND j.dataset=? AND j.state<>? AND j.due<=? AND j.year '+('>=?' if recent else '<?')+' ORDER BY j.due,j.year DESC,j.isin LIMIT ?',exchange,dataset,'not_applicable',now(),year-1,min(budget,allocation if dataset in ('legacy','integrated','results') else max(1,allocation//4)))
+                jobs=db.run('SELECT j.isin,l.code,j.year,j.attempts FROM v2_jobs j JOIN v2_listings l ON l.isin=j.isin AND l.source=j.source JOIN companies c ON c.isin=j.isin WHERE c.active=1 AND c.symbol IN (SELECT symbol FROM pilot_members) AND j.year>=? AND j.source=? AND j.dataset=? AND j.state<>? AND j.due<=? AND j.year '+('>=?' if recent else '<?')+' ORDER BY j.due,j.year DESC,j.isin LIMIT ?',pilot.bounds()[0].year,exchange,dataset,'not_applicable',now(),year-1,min(budget,allocation if dataset in ('legacy','integrated','results') else max(1,allocation//4)))
                 for isin,code,y,attempts in jobs:
                     if (exchange,dataset) in blocked or budget<=0: break
+                    current=storage(db)['fraction']
+                    if current is None or current>=.95: print('Pilot storage guard: stopping new jobs'); return
                     budget-=1; processed+=1; y=int(y); attempts=int(attempts)
                     try:
                         state,detail=ingest(db,source,isin,exchange,code,dataset,y); delay=1 if recent else 90; attempts=0
@@ -203,7 +211,7 @@ def report(db):
     out={}
     for t in ['companies','facts','filings','v2_filings','v2_facts','v2_listings']: out[t]=int(db.run('SELECT COUNT(*) FROM '+t)[0][0])
     out['jobs']=db.run('SELECT source,dataset,state,COUNT(*) FROM v2_jobs GROUP BY source,dataset,state'); out['quality']=db.run('SELECT status,COUNT(*) FROM v2_facts GROUP BY status'); out['coverage']=db.run('SELECT d.isin,d.source,COUNT(*),MIN(f.end),MAX(f.end) FROM v2_facts f JOIN v2_filings d ON d.id=f.filing WHERE d.status=\'parsed\' GROUP BY d.isin,d.source'); out['verified']=0
-    out['audit']=audit(db)
+    out['audit']=audit(db); out['pilot']=pilot.validate(db)
     os.makedirs('reports',exist_ok=True)
     with open('reports/coverage.json','w') as f: json.dump(out,f,indent=2)
     with open('reports/coverage.csv','w') as f:
