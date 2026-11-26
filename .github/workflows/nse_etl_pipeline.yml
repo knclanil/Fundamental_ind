@@ -1,0 +1,36 @@
+name: Five company financial pilot
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 13 * * 1-5'
+permissions:
+  contents: read
+concurrency:
+  group: fundamental-pilot
+  cancel-in-progress: false
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - run: test -n "$TURSO_DATABASE_URL" && test -n "$TURSO_AUTH_TOKEN"
+      - run: python main.py --max-jobs 20
+      - if: always()
+        run: python main.py --report
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pilot-evidence
+          path: |
+            reports/
+            archive/
+          retention-days: 14
