@@ -20,6 +20,7 @@ def init(db):
 
 def parse(text,expected=None,previous=None):
  reader=csv.DictReader(io.StringIO(text.lstrip('\ufeff'))); required={'Symbol','ISIN Code','Company Name','Industry'}
+ reader.fieldnames=[h.strip().lstrip('\ufeff') for h in (reader.fieldnames or [])]
  if not required.issubset(reader.fieldnames or []): raise ValueError('Invalid CSV headers')
  result={}; symbols=set()
  for r in reader:

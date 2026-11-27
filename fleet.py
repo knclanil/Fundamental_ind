@@ -2,7 +2,7 @@ import argparse,os,time,json,hashlib,gzip,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
 from database import DB
-from universe import fetch
+from universe import refresh
 from tickers import ticker_for
 from yahoo_pilot import extract,ROUTES
 from yahoo_quality import classify,validate,freshness,MAPPING
@@ -102,7 +102,9 @@ def main():
  db=DB();db.init();install_wide(db)
  if a.init_only:return
  import yfinance as yf
- seed(db,fetch());out=Path('reports/fleet');out.mkdir(parents=True,exist_ok=True);failures=0
+ out=Path('reports/fleet');out.mkdir(parents=True,exist_ok=True);failures=0
+ members=refresh(db,out)
+ if members is not None:seed(db,members)
  checkpoint(db,out,failures)
  for cid,s in db.run("SELECT c.id,c.symbol FROM misc_queue q JOIN dm_company c ON c.id=q.company_id WHERE c.active=1 AND q.dataset_group=? AND (q.next_retry IS NULL OR q.next_retry<=?) AND (q.dataset_group='EXTENDED' OR q.last_success IS NULL OR q.last_success<?) ORDER BY COALESCE(q.last_attempt,''),c.symbol LIMIT ?",(a.group,now(),(datetime.now(timezone.utc)-timedelta(days=7)).isoformat(),a.limit)):
   if time.monotonic()>=deadline or db.occupied()>=380000000:break
