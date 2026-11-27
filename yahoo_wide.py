@@ -8,7 +8,7 @@ def quote(s):return '"'+s.replace('"','""')+'"'
 def literal(s):return "'"+s.replace("'","''")+"'"
 def install(db):
     views={}
-    views['latest'] = '''WITH ranked AS (SELECT *,DENSE_RANK() OVER(PARTITION BY symbol,statement,frequency ORDER BY retrieved DESC,snapshot_sha DESC) AS snapshot_rank FROM vw_fund_yahoo_classified) SELECT * FROM ranked WHERE snapshot_rank=1'''
+    views['latest'] = '''WITH ranked AS (SELECT *,DENSE_RANK() OVER(PARTITION BY symbol,statement,frequency,period_end,metric ORDER BY retrieved DESC,snapshot_sha DESC) AS snapshot_rank FROM vw_fund_yahoo_classified) SELECT * FROM ranked WHERE snapshot_rank=1'''
     views['cells']='''SELECT symbol,statement,frequency,period_end,metric,MIN(classified_unit) AS unit,COUNT(DISTINCT classified_unit || ':' || value_raw) AS variants,CASE WHEN COUNT(DISTINCT classified_unit || ':' || value_raw)=1 THEN MAX(CASE classified_unit WHEN 'INR' THEN classified_crores WHEN 'USD' THEN usd_millions WHEN 'UNKNOWN' THEN NULL ELSE CAST(value_raw AS REAL) END) END AS display_value FROM vw_fund_yahoo_latest GROUP BY symbol,statement,frequency,period_end,metric'''
     views['completeness']='''SELECT symbol,statement,frequency,period_end,COUNT(*) AS observed_metrics,SUM(CASE WHEN variants>1 THEN 1 ELSE 0 END) AS conflicting_metrics,SUM(CASE WHEN display_value IS NULL THEN 1 ELSE 0 END) AS unavailable_metrics FROM vw_fund_yahoo_cells GROUP BY symbol,statement,frequency,period_end'''
     columns={}
