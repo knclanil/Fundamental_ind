@@ -4,3 +4,5 @@ Replace repository files with this package (including .github), commit to main. 
 4.1.1 fixes the stale workflow regression assertion. All 23 local tests pass.
 
 Local validation: 23 tests passed; Python compilation passed. Live GitHub Actions, Yahoo and Turso execution remain unverified.
+
+4.1.2: Exact-count failure corrected with bounded count validation; live constituent count unknown.

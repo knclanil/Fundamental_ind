@@ -9,3 +9,9 @@ def test_universe():
 
 def test_reusable_pages():
     db=DB.__new__(DB);db.local=sqlite3.connect(':memory:');db.run('CREATE TABLE t(x)');db.run('INSERT INTO t VALUES(zeroblob(100000))');db.run('DROP TABLE t');assert db.occupied()<db.storage()
+
+def test_universe_extra_securities():
+    raw='Company Name,Industry,Symbol,ISIN Code\n'+'\n'.join(f'Company {i},Bank,S{i},INE{i:09d}' for i in range(501))
+    assert len(parse(raw))==501
+    with pytest.raises(ValueError):parse(raw+'\nCompany duplicate,Bank,S501,INE000000000')
+    with pytest.raises(ValueError):parse('<html>blocked</html>')
