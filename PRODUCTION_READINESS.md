@@ -1,8 +1,2 @@
-# Fundamental_ind 4.1.1 — Nifty 500 candidate
-Replace repository files with this package (including .github), commit to main. Existing TURSO_DATABASE_URL and TURSO_AUTH_TOKEN secrets are required. The workflow fetches the official Nifty 500 CSV, validates 500 unique symbols and ISINs, and queues all members immediately. It processes up to 500 companies per run, with a five-hour processing budget and a 30-minute schedule; runs do not overlap, retries unsuccessful companies on later runs, and refreshes successful companies after seven days. No pilot verification gate blocks onboarding. Data remains UNVERIFIED. Existing Yahoo data is retained; no legacy cleanup is executed. The occupied-page guard is an application limit, not a provider quota guarantee. Extended payloads may exhaust free-tier storage; monitor the workflow summary. Historical gaps, independent verification, supplementary source acquisition, complete normalized market/ownership data and comprehensive ratios remain incomplete. Live source and Turso tests are not performed here. Existing pilot scripts are retained for reference; fleet.py is the scheduled entry point.
-
-4.1.1 fixes the stale workflow regression assertion. All 23 local tests pass.
-
-Local validation: 23 tests passed; Python compilation passed. Live GitHub Actions, Yahoo and Turso execution remain unverified.
-
-4.1.2: Exact-count failure corrected with bounded count validation; live constituent count unknown.
+# 5.0 candidate
+Offline migration and ticker overrides implemented. Synthetic migration and regression tests pass. Live Turso import, trigger support, full production export, actual savings, analytical equivalence across all production views and Yahoo ticker availability remain unverified. No production data changed. Core fact schema unchanged; classification text remains per link. Compression uses gzip/base64 for transport compatibility, not binary BLOB. Existing supplementary acquisition and retry behavior largely unchanged. Do not delete the original database until validation and recovery are confirmed.

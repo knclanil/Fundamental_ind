@@ -1,4 +1,5 @@
 """Yahoo pilot: source-specific staging, explicit production upload, no silent fallback."""
+from tickers import ticker_for
 import argparse, csv, json, os, sqlite3, time, hashlib
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
@@ -42,7 +43,7 @@ def extract(frame,symbol,route,currency):
 def collect(factory,out):
     rows=[]; coverage=[]; errors=[]
     for symbol in WATCH:
-        ticker=factory(symbol+'.NS'); currency=None
+        ticker=factory(ticker_for(symbol)); currency=None
         try:currency=ticker.get_info().get('financialCurrency')
         except Exception as e:errors.append(dict(symbol=symbol,route='profile',error=type(e).__name__))
         for route in ROUTES:
@@ -83,7 +84,7 @@ def store(db,rows,stamp,sha,summary,remote=False):
         for start in range(0,len(rows),100):
             batch=rows[start:start+100]
             values=','.join(['(?,?,?,?,?,?,?,?)']*len(batch))
-            args=tuple(v for r in batch for v in (r['symbol'],r['symbol']+'.NS',r['statement'],r['metric'],r['frequency'],r['period_end'],r['unit'],r['value_raw']))
+            args=tuple(v for r in batch for v in (r['symbol'],ticker_for(r['symbol']),r['statement'],r['metric'],r['frequency'],r['period_end'],r['unit'],r['value_raw']))
             prefix='WITH incoming(symbol,ticker,statement,label,frequency,period_end,unit,value_raw) AS (VALUES '+values+') '
             for table,cols in [('dm_yahoo_company','symbol,ticker'),('dm_yahoo_metric','statement,label'),('dm_yahoo_period','frequency,period_end')]:
                 db.run(prefix+f'INSERT OR IGNORE INTO {table} ({cols}) SELECT DISTINCT {cols} FROM incoming',args)
@@ -98,7 +99,8 @@ def store(db,rows,stamp,sha,summary,remote=False):
         return
     for i,r in enumerate(rows):
         if remote and i%50==0 and os.getenv('YAHOO_IGNORE_STORAGE_BUDGET')!='true':db.guard()
-        c=ident('dm_yahoo_company',symbol=r['symbol'],ticker=r['symbol']+'.NS'); m=ident('dm_yahoo_metric',statement=r['statement'],label=r['metric']); p=ident('dm_yahoo_period',frequency=r['frequency'],period_end=r['period_end'])
+        db.run('UPDATE dm_yahoo_company SET ticker=? WHERE symbol=?',(ticker_for(r['symbol']),r['symbol']))
+        c=ident('dm_yahoo_company',symbol=r['symbol'],ticker=ticker_for(r['symbol'])); m=ident('dm_yahoo_metric',statement=r['statement'],label=r['metric']); p=ident('dm_yahoo_period',frequency=r['frequency'],period_end=r['period_end'])
         args=(c,m,p,r['unit'],r['value_raw']); db.run('INSERT OR IGNORE INTO ft_yahoo_financials(company_id,metric_id,period_id,unit,value_raw,first_seen) VALUES(?,?,?,?,?,?)',args+(stamp,))
         fid=db.run('SELECT id FROM ft_yahoo_financials WHERE company_id=? AND metric_id=? AND period_id=? AND unit=? AND value_raw=?',args)[0][0]
         db.run('INSERT OR IGNORE INTO ft_yahoo_source_reference VALUES(?,?,?)',(int(fid),sha,stamp))

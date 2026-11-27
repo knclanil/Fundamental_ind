@@ -3,6 +3,7 @@ import argparse,hashlib,json,os,time,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
 from database import DB
+from tickers import ticker_for
 from universe import fetch
 from production import acquire,run
 from yahoo_wide import install
@@ -17,6 +18,7 @@ def main():
     os.environ.pop('YAHOO_IGNORE_STORAGE_BUDGET',None)
     import yfinance as yf
     db=DB();out=Path('reports/fleet');out.mkdir(parents=True,exist_ok=True)
+    if not db.run("SELECT name FROM sqlite_schema WHERE name='dm_compact_snapshot'"):raise RuntimeError('Validated optimized database required; see README')
     db.run('CREATE TABLE IF NOT EXISTS dm_yahoo_universe(symbol TEXT PRIMARY KEY,isin TEXT,industry TEXT,company_name TEXT,active INTEGER,last_seen TEXT)')
     db.run('CREATE TABLE IF NOT EXISTS misc_yahoo_queue(symbol TEXT PRIMARY KEY,last_attempt TEXT,last_success TEXT,status TEXT,error TEXT)')
     members=fetch();stamp=now()
@@ -29,13 +31,15 @@ def main():
     audit=[]; failures=0
     for (s,) in selected:
         if time.monotonic()>=deadline:break
-        db.guard(); stamp=now();db.run("UPDATE misc_yahoo_queue SET last_attempt=?,status='RUNNING' WHERE symbol=?",(stamp,s))
+        if db.occupied()>=int(os.getenv("STORAGE_BUDGET_BYTES","400000000"))*.95:break
+        stamp=now();db.run("UPDATE misc_yahoo_queue SET last_attempt=?,status='RUNNING' WHERE symbol=?",(stamp,s))
         try:
             rows,coverage,payloads,checks=acquire(yf.Ticker,[s]);audit.extend(checks)
             rows=list({tuple(sorted(r.items())):r for r in rows}.values())
             if not rows:raise RuntimeError('No financial observations')
             sha=hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest()
             run(db,rows,coverage,payloads,stamp,sha,True)
+            db.run("UPDATE dm_yahoo_company SET ticker=? WHERE symbol=?",(ticker_for(s),s))
             complete={r['statement'] for r in rows if r['frequency']=='ANNUAL'}=={'PNL','BS','CF'}
             db.run('UPDATE misc_yahoo_queue SET last_success=?,status=?,error=NULL WHERE symbol=?',(stamp if complete else None,'PUBLISHED_UNVERIFIED' if complete else 'PARTIAL',s))
         except Exception as e:

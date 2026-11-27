@@ -1,4 +1,6 @@
 """Consolidated candidate: extended acquisition, immutable payloads and explicit gates."""
+from tickers import ticker_for
+from optimize_db import pack
 import argparse, csv, hashlib, json, os, sqlite3, time, zipfile
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -17,7 +19,7 @@ def encode(x):
 def acquire(factory, symbols=None):
     rows=[]; coverage=[]; payloads=[]; audit=[]
     for s in (symbols if symbols is not None else WATCH):
-        t=factory(s+'.NS'); currency=None
+        t=factory(ticker_for(s)); currency=None
         for name,fn in MODULES.items():
             try:
                 time.sleep(float(os.getenv("YAHOO_DELAY", "1.2"))); v=fn(t); data=encode(v)
@@ -45,8 +47,9 @@ def gaps(rows,today=None):
 
 def payload_store(db,payloads,stamp):
     db.run('CREATE TABLE IF NOT EXISTS ft_yahoo_extended(symbol TEXT,module TEXT,sha TEXT,payload TEXT,first_seen TEXT,PRIMARY KEY(symbol,module,sha))')
+    compact=bool(db.run("SELECT name FROM sqlite_schema WHERE name='dm_compact_snapshot'"))
     for p in payloads:
-        raw=json.dumps(p['data'],sort_keys=True,default=str);sha=hashlib.sha256(raw.encode()).hexdigest();db.run('INSERT OR IGNORE INTO ft_yahoo_extended VALUES(?,?,?,?,?)',(p['symbol'],p['module'],sha,raw,stamp))
+        raw=json.dumps(p['data'],sort_keys=True,default=str);sha=hashlib.sha256(raw.encode()).hexdigest();db.run('INSERT OR IGNORE INTO ft_yahoo_extended VALUES(?,?,?,?,?)',(p['symbol'],p['module'],sha,pack(raw) if compact else raw,stamp))
     db.run('CREATE VIEW IF NOT EXISTS vw_fund_yahoo_extended AS SELECT * FROM ft_yahoo_extended')
 
 def run(db,rows,coverage,payloads,stamp,sha,remote=False):
