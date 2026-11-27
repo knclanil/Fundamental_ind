@@ -46,7 +46,7 @@ def parse(raw, filing_scope):
     return facts,issues
 class NSE:
     def __init__(self):
-        self.session=requests.Session(); self.session.headers.update({'User-Agent':'Financial research ETL/2.0','Accept':'application/json, text/plain, */*','Accept-Language':'en-US,en;q=0.9'}); self.last=0; self.blocked=False
+        self.session=requests.Session(); self.session.headers.update({'User-Agent':'Financial research ETL/2.0','Accept':'application/json, text/plain, */*','Accept-Language':'en-US,en;q=0.9'}); self.last=0; self.blocked=False; self.diagnostics=[]; self.base="https://www.nseindia.in"
     def get(self,url,params=None):
         if self.blocked:raise RuntimeError('Source circuit open')
         for attempt in range(4):
@@ -60,7 +60,8 @@ class NSE:
                 break
             else:raise RuntimeError('Too many redirects')
             with r:
-                if r.status_code in (401,403):self.blocked=True; raise RuntimeError(f'Access denied {r.status_code}')
+                self.diagnostics.append({'url':target,'params':query,'status':r.status_code,'content_type':r.headers.get('Content-Type','')})
+                if r.status_code in (401,403,429):self.blocked=True; raise RuntimeError(f'Access restricted {r.status_code}')
                 if r.status_code==429 or r.status_code>=500:
                     delay=r.headers.get('Retry-After',''); time.sleep(min(120,max(2**attempt,int(delay) if delay.isdigit() else 0))); continue
                 r.raise_for_status(); data=bytearray()
@@ -80,7 +81,7 @@ class NSE:
             count=0
             for page in range(1,101):
                 if route=='integrated-filing-results':q['page']=page
-                raw=self.get('https://www.nseindia.com/api/'+route,q); obj=json.loads(raw); rows=obj if isinstance(obj,list) else obj.get('data');
+                raw=self.get(self.base+'/api/'+route,q); obj=json.loads(raw); rows=obj if isinstance(obj,list) else obj.get('data');
                 if not isinstance(rows,list):raise ValueError('Unexpected response schema')
                 yield raw,rows,q
                 count+=len(rows); total=obj.get('totalCount') if isinstance(obj,dict) else None

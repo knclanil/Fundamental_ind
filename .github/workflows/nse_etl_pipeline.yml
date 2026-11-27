@@ -23,6 +23,8 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
       - run: test -n "$TURSO_DATABASE_URL" && test -n "$TURSO_AUTH_TOKEN"
+      - name: Read-only NSE preflight
+        run: python main.py --source-audit --symbol RELIANCE --max-jobs 3
       - run: python main.py --max-jobs 20
       - if: always()
         run: python main.py --report

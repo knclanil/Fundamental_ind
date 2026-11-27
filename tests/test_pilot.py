@@ -15,3 +15,23 @@ def test_schema(monkeypatch,tmp_path):
 def test_load(monkeypatch,tmp_path):
  from main import load
  monkeypatch.chdir(tmp_path);monkeypatch.delenv('TURSO_DATABASE_URL',raising=False);d=DB();d.init();args=(d,'RELIANCE','financial-results',{'consolidated':'Consolidated'},'https://nsearchives.nseindia.com/a.xml',XML);load(*args);load(*args);assert d.run('SELECT COUNT(*) FROM ft_financials')[0][0]==2;assert d.run('SELECT assets FROM vw_fund_balance_sheet')[0][0]==10;assert d.run('SELECT COUNT(*) FROM vw_fund_verified_financials')[0][0]==0
+
+def test_blocked_audit(monkeypatch,tmp_path):
+ import main,sys,json
+ monkeypatch.chdir(tmp_path)
+ def denied(self,*args,**kwargs):
+  self.blocked=True;self.diagnostics.append({'status':403});raise RuntimeError('Access restricted 403')
+ monkeypatch.setattr(main.NSE,'get',denied)
+ monkeypatch.setattr(sys,'argv',['main.py','--source-audit','--symbol','RELIANCE'])
+ assert main.main()==2
+ assert json.loads((tmp_path/'reports/ingestion_summary.json').read_text())['status']=='blocked'
+ assert len(json.loads((tmp_path/'reports/source_audit.json').read_text()))==1
+
+def test_direct_discovery(monkeypatch):
+ from nse_extractor import NSE
+ c=NSE();calls=[]
+ def get(url,params):
+  calls.append((url,dict(params)));return b'[]'
+ monkeypatch.setattr(c,'get',get)
+ assert len(list(c.discover('RELIANCE',2025,'financial-results')))==3
+ assert all(url=='https://www.nseindia.in/api/financial-results' for url,p in calls)

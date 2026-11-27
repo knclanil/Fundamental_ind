@@ -39,15 +39,17 @@ def main():
         print(json.dumps({'storage_bytes':db.storage(),'coverage':db.run('SELECT symbol,statement,COUNT(*),MIN(period_end),MAX(period_end) FROM vw_fund_observations GROUP BY symbol,statement'),'pilot_accepted':False,'blocker':'Independent verification not implemented'}));return
     client=NSE(); log=[]; today=date.today(); fy=today.year-(today.month<4); symbols=[a.symbol] if a.symbol else list(WATCH); jobs=0
     try:
-        client.get('https://www.nseindia.com/')
+        # Direct documented website API discovery; no mandatory homepage request.
+        # Stop this source on access denial; never switch hosts to evade a denial.
         for year in range(today.year,fy-a.backfill_years-1,-1):
             for symbol in symbols:
                 for route in ('financial-results','corporates-financial-results','integrated-filing-results','annual-reports'):
                     if route=='integrated-filing-results' and year<2024:continue
                     if route=='annual-reports' and year!=today.year:continue
                     if jobs>=a.max_jobs:break
+                    if client.blocked:break
                     if db:
-                        db.guard(); old=db.run('SELECT state FROM misc_etl_jobs WHERE symbol=? AND year=? AND route=?',(symbol,year,route))
+                        old=db.run('SELECT state FROM misc_etl_jobs WHERE symbol=? AND year=? AND route=?',(symbol,year,route))
                         if old and old[0][0]=='parsed':continue
                     jobs+=1; rec={'symbol':symbol,'year':year,'route':route,'rows':0,'facts':0,'errors':[],'pdf_links':[],'documents':0}; log.append(rec)
                     try:
@@ -61,15 +63,19 @@ def main():
                                     elif isinstance(v,str) and v.startswith('https://') and v.lower().split('?')[0].endswith('.pdf'):rec['pdf_links'].append(v)
                                 for url in urls:
                                     try:
+                                        if client.blocked:break
                                         doc=client.get(url);archive(doc);rec['documents']+=1
                                         if db:n,q=load(db,symbol,route,row,url,doc);rec['facts']+=n
                                         else:fs,issues=parse(doc,scope(row.get('consolidated') or row.get('consolidation')));rec['facts']+=len(fs)
                                     except Exception as e:rec['errors'].append(str(e))
                     except Exception as e:rec['errors'].append(str(e))
-                    state='partial' if rec['errors'] else 'parsed' if rec['facts'] else 'empty'
+                    state='blocked' if client.blocked else 'partial' if rec['errors'] else 'parsed' if rec['facts'] else 'empty'
                     if db:db.run('INSERT INTO misc_etl_jobs VALUES(?,?,?,?,?) ON CONFLICT(symbol,year,route) DO UPDATE SET state=excluded.state,detail=excluded.detail',(symbol,year,route,state,json.dumps({k:v for k,v in rec.items() if k!='pdf_links'})))
-                    if client.blocked:raise RuntimeError('NSE access denied')
+                    if client.blocked:break
     finally:
-        (reports/'source_audit.json').write_text(json.dumps(log,indent=2));(reports/'pilot_acceptance.json').write_text(json.dumps({'accepted':False,'expansion_enabled':False,'blocker':'Independent verification and completeness not established'}))
-    if not any(r['facts'] for r in log):raise RuntimeError('No financial facts acquired')
-if __name__=='__main__':main()
+        (reports/'api_diagnostics.json').write_text(json.dumps(client.diagnostics,indent=2));(reports/'ingestion_summary.json').write_text(json.dumps({'status':'blocked' if client.blocked else 'acquired' if any(r['facts'] for r in log) else 'no_facts','jobs':len(log),'facts':sum(r['facts'] for r in log)},indent=2));(reports/'source_audit.json').write_text(json.dumps(log,indent=2));(reports/'pilot_acceptance.json').write_text(json.dumps({'accepted':False,'expansion_enabled':False,'blocker':'Independent verification and completeness not established'}))
+    if not any(r['facts'] for r in log):
+        print('No financial facts acquired; inspect reports/ingestion_summary.json and source_audit.json')
+        return 2
+    return 0
+if __name__=='__main__':raise SystemExit(main())
