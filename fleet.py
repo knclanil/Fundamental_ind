@@ -1,53 +1,80 @@
-"""Resume Nifty 500 ingestion across scheduled runs. Missing data never becomes zero."""
-import argparse,hashlib,json,os,time,traceback
+import argparse,os,time,json,hashlib,gzip
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
 from database import DB
-from tickers import ticker_for
 from universe import fetch
-from production import acquire,run
-from yahoo_wide import install
-from yahoo_pilot import csvout
-from analytics import install_extra
-
+from tickers import ticker_for
+from yahoo_pilot import extract,ROUTES
+from yahoo_quality import classify,validate,freshness,MAPPING
+ROUTES.update(ttm_income_stmt=('PNL','TTM'),ttm_cashflow=('CF','TTM'))
 def now():return datetime.now(timezone.utc).isoformat()
+def raw(x):return json.dumps(x,sort_keys=True,default=str,separators=(',',':')).encode()
+def seed(db,members):
+ for s,(isin,industry,name) in members.items():
+  db.run('INSERT INTO dm_company(isin,symbol,name,industry) VALUES(?,?,?,?) ON CONFLICT(isin) DO UPDATE SET symbol=excluded.symbol,name=excluded.name,industry=excluded.industry,active=1',(isin,s,name,industry))
+  db.run('INSERT INTO dm_ticker SELECT id,? FROM dm_company WHERE isin=? ON CONFLICT(company_id) DO UPDATE SET ticker=excluded.ticker',(ticker_for(s),isin))
+  db.run("INSERT OR IGNORE INTO misc_queue(company_id,dataset_group) SELECT id,'CORE' FROM dm_company WHERE isin=?",(isin,))
+  db.run("INSERT OR IGNORE INTO misc_queue(company_id,dataset_group) SELECT id,'EXTENDED' FROM dm_company WHERE isin=?",(isin,))
+ marks=','.join('?' for _ in members);db.run(f'UPDATE dm_company SET active=0 WHERE isin NOT IN ({marks})',tuple(v[0] for v in members.values()))
+def acquire(factory,s,group):
+ t=factory(ticker_for(s));rows=[];coverage=[];payload={};errors=[]
+ def call(name,fn):
+  time.sleep(float(os.getenv('YAHOO_DELAY','1.2')))
+  try:return fn()
+  except Exception as e:errors.append(name+': '+type(e).__name__);return None
+ if group=='CORE':
+  info=call('profile',t.get_info) or {};currency=info.get('financialCurrency');payload['profile']=info
+  for route in ROUTES:
+   frame=call(route,lambda:getattr(t,route));batch=extract(frame,s,route,currency) if frame is not None else [];rows.extend(batch);coverage.append({'symbol':s,'currency':currency,'route':route,'facts':len(batch)})
+ else:
+  for name,fn in {'prices':lambda:t.history(period='5y',auto_adjust=False,actions=True),'shares':lambda:t.get_shares_full(),'dividends':lambda:t.dividends,'splits':lambda:t.splits,'institutional':lambda:t.institutional_holders,'major_holders':lambda:t.major_holders,'mutual_funds':lambda:t.mutualfund_holders,'earnings_estimates':lambda:t.earnings_estimate,'revenue_estimates':lambda:t.revenue_estimate,'recommendations':lambda:t.recommendations}.items():
+   v=call(name,fn)
+   if v is not None:payload[name]=json.loads(v.to_json(date_format='iso')) if hasattr(v,'to_json') else v
+ return rows,coverage,payload,errors
+def publish(db,cid,s,rows,coverage,payload,errors):
+ classified=classify(rows,coverage); items=sorted({(r['statement'],r['metric'],r['unit_kind'],r['frequency'],r['period_end'],r['classified_unit'],r['value_raw']) for r in classified});stamp=now();sha=hashlib.sha256(raw([items,payload])).digest()
+ sid=int(db.run('INSERT INTO dm_snapshot(company_id,retrieved,sha,ticker) VALUES(?,?,?,?) RETURNING id',(cid,stamp,sha,ticker_for(s)))[0][0])
+ for start in range(0,len(items),100):
+  batch=items[start:start+100];args=tuple(v for r in batch for v in r);prefix='WITH incoming(statement,label,kind,frequency,period_end,unit,value_text) AS (VALUES '+','.join(['(?,?,?,?,?,?,?)']*len(batch))+') '
+  for table,cols,select in [('dm_metric','statement,label,kind','statement,label,kind'),('dm_period','frequency,period_end','frequency,period_end'),('dm_unit','code','unit')]:db.run(prefix+f'INSERT OR IGNORE INTO {table}({cols}) SELECT DISTINCT {select} FROM incoming',args)
+  joins=' FROM incoming i JOIN dm_metric m ON m.statement=i.statement AND m.label=i.label AND m.kind=i.kind JOIN dm_period p ON p.frequency=i.frequency AND p.period_end=i.period_end JOIN dm_unit u ON u.code=i.unit'
+  db.run(prefix+'INSERT OR IGNORE INTO ft_financials(company_id,metric_id,period_id,unit_id,value_text) SELECT ?,m.id,p.id,u.id,i.value_text'+joins,args+(cid,))
+  db.run(prefix+'INSERT OR IGNORE INTO ft_source_reference SELECT f.id,?'+joins+' JOIN ft_financials f ON f.company_id=? AND f.metric_id=m.id AND f.period_id=p.id AND f.unit_id=u.id AND f.value_text=i.value_text',args+(sid,cid))
+ if int(db.run('SELECT count(*) FROM ft_source_reference WHERE snapshot_id=?',(sid,))[0][0])!=len(items):raise RuntimeError('Fact count mismatch')
+ for module,data in payload.items():
+  b=raw(data);h=hashlib.sha256(b).digest();db.run('INSERT OR IGNORE INTO dm_payload(sha,payload,original_bytes) VALUES(?,?,?)',(h,gzip.compress(b,mtime=0),len(b)));db.run('INSERT INTO ft_extended SELECT ?,?,id FROM dm_payload WHERE sha=?',(sid,module,h))
+ db.run('INSERT INTO misc_quality VALUES(?,?)',(sid,json.dumps({'checks':validate(classified),'freshness':freshness(classified),'coverage':coverage,'errors':errors})))
+ db.run("UPDATE dm_snapshot SET status='COMPLETE' WHERE id=?",(sid,))
+def install_wide(db):
+ import re
+ for stmt,short in [('PNL','pnl'),('BS','bs'),('CF','cf')]:
+  labels=sorted(set(MAPPING[stmt])|{r[0] for r in db.run('SELECT label FROM dm_metric WHERE statement=?',(stmt,))});used=set();cols=[]
+  for label in labels:
+   base=re.sub('[^a-z0-9]+','_',label.lower()).strip('_') or 'metric';name=base;n=2
+   while name in used:name=base+'_'+str(n);n+=1
+   used.add(name);cols.append("MAX(CASE WHEN metric='"+label.replace("'","''")+"' THEN display_value END) AS \""+name+'\"')
+  db.run('DROP VIEW IF EXISTS vw_fund_'+short+'_wide');db.run('CREATE VIEW vw_fund_'+short+'_wide AS SELECT symbol,frequency,period_end,'+','.join(cols)+" FROM vw_fund_cells WHERE statement='"+stmt+"' GROUP BY symbol,frequency,period_end")
+ db.run('CREATE VIEW IF NOT EXISTS vw_fund_ratios AS SELECT p.symbol,p.frequency,p.period_end,CASE WHEN r.unit=n.unit AND r.unit IN (\'INR\',\'USD\') AND p.total_revenue>0 THEN 100.0*p.net_income/p.total_revenue END net_margin_pct FROM vw_fund_pnl_wide p JOIN vw_fund_cells r ON r.symbol=p.symbol AND r.frequency=p.frequency AND r.period_end=p.period_end AND r.statement=\'PNL\' AND r.metric=\'Total Revenue\' JOIN vw_fund_cells n ON n.symbol=p.symbol AND n.frequency=p.frequency AND n.period_end=p.period_end AND n.statement=\'PNL\' AND n.metric=\'Net Income\'')
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--limit',type=int,default=500);p.add_argument('--minutes',type=int,default=300);a=p.parse_args()
-    deadline=time.monotonic()+a.minutes*60
-    if not os.getenv('TURSO_DATABASE_URL') or not os.getenv('TURSO_AUTH_TOKEN'):raise RuntimeError('Remote credentials required')
-    os.environ.pop('YAHOO_IGNORE_STORAGE_BUDGET',None)
-    import yfinance as yf
-    db=DB();out=Path('reports/fleet');out.mkdir(parents=True,exist_ok=True)
-    if not db.run("SELECT name FROM sqlite_schema WHERE name='dm_compact_snapshot'"):raise RuntimeError('Validated optimized database required; see README')
-    db.run('CREATE TABLE IF NOT EXISTS dm_yahoo_universe(symbol TEXT PRIMARY KEY,isin TEXT,industry TEXT,company_name TEXT,active INTEGER,last_seen TEXT)')
-    db.run('CREATE TABLE IF NOT EXISTS misc_yahoo_queue(symbol TEXT PRIMARY KEY,last_attempt TEXT,last_success TEXT,status TEXT,error TEXT)')
-    members=fetch();stamp=now()
-    for s,(isin,industry,name) in members.items():
-        db.run('INSERT INTO dm_yahoo_universe VALUES(?,?,?,?,1,?) ON CONFLICT(symbol) DO UPDATE SET isin=excluded.isin,industry=excluded.industry,company_name=excluded.company_name,active=1,last_seen=excluded.last_seen',(s,isin,industry,name,stamp))
-        db.run('INSERT OR IGNORE INTO misc_yahoo_queue(symbol,status) VALUES(?,?)',(s,'PENDING'))
-    db.run('UPDATE dm_yahoo_universe SET active=0 WHERE last_seen<>?',(stamp,))
-    cutoff=(datetime.now(timezone.utc)-timedelta(days=7)).isoformat()
-    selected=db.run('SELECT q.symbol FROM misc_yahoo_queue q JOIN dm_yahoo_universe u USING(symbol) WHERE u.active=1 AND (q.last_success IS NULL OR q.last_success<?) ORDER BY COALESCE(q.last_attempt,\'\'),q.symbol LIMIT ?',(cutoff,a.limit))
-    audit=[]; failures=0
-    for (s,) in selected:
-        if time.monotonic()>=deadline:break
-        if db.occupied()>=int(os.getenv("STORAGE_BUDGET_BYTES","400000000"))*.95:break
-        stamp=now();db.run("UPDATE misc_yahoo_queue SET last_attempt=?,status='RUNNING' WHERE symbol=?",(stamp,s))
-        try:
-            rows,coverage,payloads,checks=acquire(yf.Ticker,[s]);audit.extend(checks)
-            rows=list({tuple(sorted(r.items())):r for r in rows}.values())
-            if not rows:raise RuntimeError('No financial observations')
-            sha=hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest()
-            run(db,rows,coverage,payloads,stamp,sha,True)
-            db.run("UPDATE dm_yahoo_company SET ticker=? WHERE symbol=?",(ticker_for(s),s))
-            complete={r['statement'] for r in rows if r['frequency']=='ANNUAL'}=={'PNL','BS','CF'}
-            db.run('UPDATE misc_yahoo_queue SET last_success=?,status=?,error=NULL WHERE symbol=?',(stamp if complete else None,'PUBLISHED_UNVERIFIED' if complete else 'PARTIAL',s))
-        except Exception as e:
-            failures+=1;db.run("UPDATE misc_yahoo_queue SET status='FAILED',error=? WHERE symbol=?",(type(e).__name__,s))
-            if failures>=3:break
-    if db.run("SELECT name FROM sqlite_schema WHERE name='vw_fund_yahoo_financial_summary'"):install_extra(db)
-    csvout(out/'source_audit.csv',audit)
-    report={'universe':len(members),'queue':db.run('SELECT status,count(*) FROM misc_yahoo_queue JOIN dm_yahoo_universe USING(symbol) WHERE active=1 GROUP BY status'),'allocated_bytes':db.storage(),'occupied_bytes':db.occupied(),'independently_verified':False,'failures':failures,'selected':len(selected),'time_budget_reached':time.monotonic()>=deadline}
-    (out/'summary.json').write_text(json.dumps(report,indent=2));print(report)
-    if failures:raise RuntimeError('One or more companies failed; queue retained')
+ p=argparse.ArgumentParser();p.add_argument('--limit',type=int,default=500);p.add_argument('--minutes',type=int,default=300);p.add_argument('--group',choices=['CORE','EXTENDED'],default='CORE');p.add_argument('--init-only',action='store_true');a=p.parse_args();deadline=time.monotonic()+a.minutes*60
+ if not os.getenv('TURSO_DATABASE_URL') or not os.getenv('TURSO_AUTH_TOKEN'):raise RuntimeError('Remote credentials required')
+ db=DB();db.init();install_wide(db)
+ if a.init_only:return
+ import yfinance as yf
+ seed(db,fetch());out=Path('reports/fleet');out.mkdir(parents=True,exist_ok=True);failures=0
+ for cid,s in db.run("SELECT c.id,c.symbol FROM misc_queue q JOIN dm_company c ON c.id=q.company_id WHERE c.active=1 AND q.dataset_group=? AND (q.next_retry IS NULL OR q.next_retry<=?) AND (q.last_success IS NULL OR q.last_success<?) ORDER BY COALESCE(q.last_attempt,''),c.symbol LIMIT ?",(a.group,now(),(datetime.now(timezone.utc)-timedelta(days=7)).isoformat(),a.limit)):
+  if time.monotonic()>=deadline or db.occupied()>=380000000:break
+  cid=int(cid);db.run("UPDATE misc_queue SET status='RUNNING',attempts=attempts+1,last_attempt=? WHERE company_id=? AND dataset_group=?",(now(),cid,a.group))
+  try:
+   rows,cov,payload,errors=acquire(yf.Ticker,s,a.group)
+   if not rows and (a.group=='CORE' or not payload):raise RuntimeError('No usable data')
+   publish(db,cid,s,rows,cov,payload,errors)
+   complete=a.group=='EXTENDED' and not errors or a.group=='CORE' and {r['statement'] for r in rows if r['frequency']=='ANNUAL'}=={'PNL','BS','CF'}
+   status='PUBLISHED_UNVERIFIED' if complete else 'PARTIAL';success=now() if complete else None
+  except Exception as e:status='FAILED';success=None;errors=[type(e).__name__+(': No usable data' if str(e)=='No usable data' else '')];failures+=1
+  db.run('UPDATE misc_queue SET status=?,last_success=COALESCE(?,last_success),next_retry=?,error=? WHERE company_id=? AND dataset_group=?',(status,success,(datetime.now(timezone.utc)+timedelta(hours=6)).isoformat(),'; '.join(errors)[:500],cid,a.group))
+  print(s,status,flush=True)
+  if failures>=5:break
+ install_wide(db);report={'queue':db.run('SELECT * FROM vw_fund_acquisition_progress'),'occupied_bytes':db.occupied(),'failures':failures};(out/'summary.json').write_text(json.dumps(report,indent=2));print(report)
+ if failures>=5:raise RuntimeError('Repeated failures; retry deferred')
 if __name__=='__main__':main()

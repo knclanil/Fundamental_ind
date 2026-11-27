@@ -3,6 +3,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      dataset_group:
+        type: choice
+        options: [CORE, EXTENDED]
+        default: CORE
   schedule:
     - cron: '7,37 * * * *'
 permissions:
@@ -21,8 +26,9 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
-      - run: python fleet.py --limit 500 --minutes 300
+      - run: python fleet.py --limit 500 --minutes 300 --group "$DATASET_GROUP"
         env:
+          DATASET_GROUP: ${{ inputs.dataset_group || 'CORE' }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
       - uses: actions/upload-artifact@v4
