@@ -125,15 +125,18 @@ def main():
         import yfinance as yf
         rows,coverage,errors=collect(yf.Ticker,out)
     raw=json.dumps(rows,sort_keys=True).encode();sha=hashlib.sha256(raw).hexdigest();(out/'snapshot.json').write_bytes(raw)
-    validation=checks(rows);summary=dict(companies=len({r['symbol'] for r in rows}),facts=len(rows),errors=errors,sha256=sha,expansion_allowed=False,independent_verification=False,production='NOT_ATTEMPTED',coverage_gaps=[c for c in coverage if not c['facts']],currency_basis='Provider metadata; unverified',storage_budget_override=os.getenv('YAHOO_IGNORE_STORAGE_BUDGET')=='true',replayed=bool(a.replay))
-    for name,data in [('observations',rows),('coverage',coverage),('accounting',validation)]:csvout(out/(name+'.csv'),data)
-    local=DB.__new__(DB);local.local=sqlite3.connect(out/'pilot.sqlite');local.local.execute('PRAGMA foreign_keys=ON');store(local,rows,stamp,sha,summary);local.local.close()
+    from yahoo_quality import classify,validate,freshness,persist
+    classified=classify(rows,coverage); validation=validate(classified); fresh=freshness(classified)
+    summary=dict(companies=len({r['symbol'] for r in rows}),facts=len(rows),errors=errors,sha256=sha,expansion_allowed=False,independent_verification=False,production='NOT_ATTEMPTED',coverage_gaps=[c for c in coverage if not c['facts']],currency_basis='Provider metadata; unverified',storage_budget_override=os.getenv('YAHOO_IGNORE_STORAGE_BUDGET')=='true',replayed=bool(a.replay))
+    summary['classified_facts']=sum(r['classified_unit']!='UNKNOWN' for r in classified);summary['quality_gate']='BLOCKED_UNVERIFIED'
+    for name,data in [('classified',classified),('freshness',fresh),('observations',rows),('coverage',coverage),('accounting',validation)]:csvout(out/(name+'.csv'),data)
+    local=DB.__new__(DB);local.local=sqlite3.connect(out/'pilot.sqlite');local.local.execute('PRAGMA foreign_keys=ON');store(local,rows,stamp,sha,summary);persist(local,classified,validation,fresh,stamp,sha);local.local.close()
     try:
         if a.publish:
             if a.replay:raise RuntimeError('Replay is local only; original retrieval timestamp unavailable')
             if not os.getenv('TURSO_DATABASE_URL') or not os.getenv('TURSO_AUTH_TOKEN'):raise RuntimeError('Missing Turso credentials')
             if not publishable(rows):raise RuntimeError('Missing annual statement for a pilot company; publication blocked')
-            store(DB(),rows,stamp,sha,summary,True);summary['production']='PUBLISHED_UNVERIFIED'
+            remote=DB();store(remote,rows,stamp,sha,summary,True);summary['published_classified_facts']=persist(remote,classified,validation,fresh,stamp,sha);summary['production']='PUBLISHED_UNVERIFIED'
     except Exception as e:summary['production']='BLOCKED_OR_PARTIAL';summary['publish_error']=str(e);raise
     finally:(out/'summary.json').write_text(json.dumps(summary,indent=2))
     if not publishable(rows):raise SystemExit(2)
