@@ -50,6 +50,8 @@ def payload_store(db,payloads,stamp):
     db.run('CREATE VIEW IF NOT EXISTS vw_fund_yahoo_extended AS SELECT * FROM ft_yahoo_extended')
 
 def run(db,rows,coverage,payloads,stamp,sha,remote=False):
+    if remote and os.getenv('YAHOO_IGNORE_STORAGE_BUDGET')!='true':db.guard()
+    if remote and os.getenv('YAHOO_IGNORE_STORAGE_BUDGET')=='true' and not {r['symbol'] for r in rows} <= set(WATCH):raise RuntimeError('Storage override restricted to pilot')
     classified=classify(rows,coverage); checks=validate(classified); fresh=freshness(classified); summary={}
     db.run('CREATE TABLE IF NOT EXISTS misc_yahoo_publication(retrieved TEXT PRIMARY KEY,sha TEXT,status TEXT)')
     db.run('INSERT OR IGNORE INTO misc_yahoo_publication VALUES(?,?,?)',(stamp,sha,'STAGING'))
@@ -78,6 +80,13 @@ def main():
     try:
         if a.publish:
             if a.replay or not os.getenv('TURSO_DATABASE_URL') or not os.getenv('TURSO_AUTH_TOKEN') or not publishable(rows):raise RuntimeError('Publication prerequisites missing')
-            run(DB(),rows,coverage,payloads,stamp,sha,True);summary['production']='PUBLISHED_UNVERIFIED'
+            remote=DB();summary['storage_before_bytes']=remote.storage();summary['storage_override']=os.getenv('YAHOO_IGNORE_STORAGE_BUDGET')=='true'
+            summary['production']='PUBLISHING'
+            run(remote,rows,coverage,payloads,stamp,sha,True);summary['production']='PUBLISHED_UNVERIFIED'
+            summary['storage_after_bytes']=remote.storage()
+    except Exception as exc:
+        summary['production']='PUBLICATION_FAILED';summary['error_type']=type(exc).__name__
+        summary['error_reason']='STORAGE_GUARD' if str(exc).startswith('Storage guard:') else 'PUBLICATION_ERROR'
+        raise
     finally:(OUT/'production_readiness.json').write_text(json.dumps(summary,indent=2))
 if __name__=='__main__':main()
