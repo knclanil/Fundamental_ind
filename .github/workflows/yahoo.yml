@@ -9,7 +9,8 @@ on:
         options: [CORE, EXTENDED]
         default: CORE
   schedule:
-    - cron: '7,37 * * * *'
+    - cron: '7 * * * *'
+    - cron: '37 * * * *'
 permissions:
   contents: read
 concurrency:
@@ -28,7 +29,7 @@ jobs:
       - run: python -m pytest -q tests/test_rebuild.py
       - run: python fleet.py --limit 500 --minutes 300 --group "$DATASET_GROUP"
         env:
-          DATASET_GROUP: ${{ inputs.dataset_group || 'CORE' }}
+          DATASET_GROUP: ${{ inputs.dataset_group || (github.event.schedule == '37 * * * *' && 'EXTENDED') || 'CORE' }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
       - uses: actions/upload-artifact@v4

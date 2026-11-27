@@ -33,3 +33,33 @@ def test_remote_types(monkeypatch):
   def json(self):return {'results':[{'type':'ok','response':{'result':{'rows':[[{'type':'integer','value':'3'},{'type':'blob','base64':'YWJj'},{'type':'null'}]]}}}]}
  monkeypatch.setattr(d.session,'post',lambda *a,**k:Response())
  assert d.run('SELECT 1')==[[3,b'abc',None]]
+
+def test_extended_isolation_and_preservation(tmp_path,monkeypatch):
+ import json
+ from fleet import acquire
+ monkeypatch.setenv('YAHOO_DELAY','0')
+ class Frame:
+  ndim=2
+  empty=False
+  def to_json(self,**kwargs):
+   assert kwargs['orient']=='split'
+   return '{"index":["2026-01-01","2026-01-01"],"columns":["Close"],"data":[[1],[2]]}'
+ class Bad:
+  def to_json(self,**kwargs):raise ValueError('serialization failure')
+ class Ticker:
+  def history(self,**kwargs):return Frame()
+  def get_shares_full(self):return Bad()
+  dividends={};splits={'x':2};institutional_holders=None;major_holders=None;mutualfund_holders=None;earnings_estimate=None;revenue_estimate=None;recommendations=None
+ rows,cov,payload,errors=acquire(lambda _:Ticker(),'HEGRAPHITE','EXTENDED')
+ assert set(payload)=={'prices','splits'}
+ assert any('serialization failure' in e for e in errors)
+ d=DB(str(tmp_path/'extended.db'));d.init();seed(d,{'HEGRAPHITE':('INE000000001','Test','Graphite')});cid=d.run('SELECT id FROM dm_company')[0][0]
+ row=dict(symbol='HEGRAPHITE',statement='PNL',metric='Total Revenue',frequency='ANNUAL',period_end='2026-03-31',unit='INR',value_raw='100')
+ publish(d,cid,'HEGRAPHITE',[row],[{'symbol':'HEGRAPHITE','currency':'INR'}],{},[])
+ publish(d,cid,'HEGRAPHITE',rows,cov,payload,errors)
+ assert d.run('SELECT native_value FROM vw_fund_observations')==[('100',)]
+ assert d.run('SELECT count(*) FROM ft_extended')==[(2,)]
+ for module,b,h in d.run('SELECT module,payload,sha FROM ft_extended JOIN dm_payload ON payload_id=id'):
+  assert hashlib.sha256(gzip.decompress(b)).digest()==h
+  assert json.loads(gzip.decompress(b))==payload[module]
+ assert not d.run('PRAGMA foreign_key_check')

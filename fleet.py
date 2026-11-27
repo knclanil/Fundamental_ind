@@ -1,4 +1,4 @@
-import argparse,os,time,json,hashlib,gzip
+import argparse,os,time,json,hashlib,gzip,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
 from database import DB
@@ -9,6 +9,23 @@ from yahoo_quality import classify,validate,freshness,MAPPING
 ROUTES.update(ttm_income_stmt=('PNL','TTM'),ttm_cashflow=('CF','TTM'))
 def now():return datetime.now(timezone.utc).isoformat()
 def raw(x):return json.dumps(x,sort_keys=True,default=str,separators=(',',':')).encode()
+def diagnostic(name,e):
+ message=f'{name}: {type(e).__name__}: {e}'
+ detail=traceback.format_exc()
+ for key in ('TURSO_AUTH_TOKEN','TURSO_DATABASE_URL'):
+  secret=os.getenv(key)
+  if secret:message=message.replace(secret,'[REDACTED]');detail=detail.replace(secret,'[REDACTED]')
+ print(message+'\n'+detail,flush=True)
+ return message
+
+def normalize_extended(v):
+ if v is None or getattr(v,'empty',False):return None
+ # Records preserve duplicate dates/columns without requiring unique index keys.
+ if hasattr(v,'to_json'):
+  if getattr(v,'ndim',None)==1:v=v.to_frame(name='value')
+  v=json.loads(v.to_json(orient='split',date_format='iso'))
+ if isinstance(v,(dict,list,tuple)) and not v:return None
+ return json.loads(json.dumps(v,sort_keys=True,default=str,allow_nan=False))
 def seed(db,members):
  for s,(isin,industry,name) in members.items():
   db.run('INSERT INTO dm_company(isin,symbol,name,industry) VALUES(?,?,?,?) ON CONFLICT(isin) DO UPDATE SET symbol=excluded.symbol,name=excluded.name,industry=excluded.industry,active=1',(isin,s,name,industry))
@@ -21,15 +38,16 @@ def acquire(factory,s,group):
  def call(name,fn):
   time.sleep(float(os.getenv('YAHOO_DELAY','1.2')))
   try:return fn()
-  except Exception as e:errors.append(name+': '+type(e).__name__);return None
+  except Exception as e:errors.append(diagnostic(name,e));return None
  if group=='CORE':
   info=call('profile',t.get_info) or {};currency=info.get('financialCurrency');payload['profile']=info
   for route in ROUTES:
    frame=call(route,lambda:getattr(t,route));batch=extract(frame,s,route,currency) if frame is not None else [];rows.extend(batch);coverage.append({'symbol':s,'currency':currency,'route':route,'facts':len(batch)})
  else:
   for name,fn in {'prices':lambda:t.history(period='5y',auto_adjust=False,actions=True),'shares':lambda:t.get_shares_full(),'dividends':lambda:t.dividends,'splits':lambda:t.splits,'institutional':lambda:t.institutional_holders,'major_holders':lambda:t.major_holders,'mutual_funds':lambda:t.mutualfund_holders,'earnings_estimates':lambda:t.earnings_estimate,'revenue_estimates':lambda:t.revenue_estimate,'recommendations':lambda:t.recommendations}.items():
-   v=call(name,fn)
-   if v is not None:payload[name]=json.loads(v.to_json(date_format='iso')) if hasattr(v,'to_json') else v
+   v=call(name,lambda:normalize_extended(fn()))
+   if v is not None:payload[name]=v
+   elif not any(e.startswith(name+':') for e in errors):errors.append(name+': EMPTY_OR_UNAVAILABLE')
  return rows,coverage,payload,errors
 def publish(db,cid,s,rows,coverage,payload,errors):
  classified=classify(rows,coverage); items=sorted({(r['statement'],r['metric'],r['unit_kind'],r['frequency'],r['period_end'],r['classified_unit'],r['value_raw']) for r in classified});stamp=now();sha=hashlib.sha256(raw([items,payload])).digest()
@@ -67,11 +85,12 @@ def main():
   cid=int(cid);db.run("UPDATE misc_queue SET status='RUNNING',attempts=attempts+1,last_attempt=? WHERE company_id=? AND dataset_group=?",(now(),cid,a.group))
   try:
    rows,cov,payload,errors=acquire(yf.Ticker,s,a.group)
-   if not rows and (a.group=='CORE' or not payload):raise RuntimeError('No usable data')
+   if not rows and (a.group=='CORE' or not payload):raise RuntimeError('No usable data: '+ '; '.join(errors))
    publish(db,cid,s,rows,cov,payload,errors)
    complete=a.group=='EXTENDED' and not errors or a.group=='CORE' and {r['statement'] for r in rows if r['frequency']=='ANNUAL'}=={'PNL','BS','CF'}
    status='PUBLISHED_UNVERIFIED' if complete else 'PARTIAL';success=now() if complete else None
-  except Exception as e:status='FAILED';success=None;errors=[type(e).__name__+(': No usable data' if str(e)=='No usable data' else '')];failures+=1
+  except Exception as e:status='FAILED';success=None;errors=[diagnostic(s,e)];failures+=1
+  with (out/'attempts.jsonl').open('a') as f:f.write(json.dumps({'symbol':s,'group':a.group,'status':status,'errors':errors})+'\n')
   db.run('UPDATE misc_queue SET status=?,last_success=COALESCE(?,last_success),next_retry=?,error=? WHERE company_id=? AND dataset_group=?',(status,success,(datetime.now(timezone.utc)+timedelta(hours=6)).isoformat(),'; '.join(errors)[:500],cid,a.group))
   print(s,status,flush=True)
   if failures>=5:break
