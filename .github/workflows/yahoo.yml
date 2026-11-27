@@ -6,11 +6,12 @@ on:
     inputs:
       dataset_group:
         type: choice
-        options: [CORE, EXTENDED]
+        options: [CORE, EXTENDED, MEMBERSHIP]
         default: CORE
   schedule:
     - cron: '7 * * * *'
     - cron: '37 * * * *'
+    - cron: '52 2,8,14,20 * * *'
 permissions:
   contents: read
 concurrency:
@@ -26,15 +27,17 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
-      - run: python -m pytest -q tests/test_rebuild.py
-      - run: python fleet.py --limit 50 --minutes 40 --group "$DATASET_GROUP"
+      - run: python -m pytest -q tests
+      - run: if [ "$DATASET_GROUP" = MEMBERSHIP ]; then python membership.py; else python fleet.py --limit 50 --minutes 40 --group "$DATASET_GROUP"; fi
         env:
-          DATASET_GROUP: ${{ inputs.dataset_group || (github.event.schedule == '37 * * * *' && 'EXTENDED') || 'CORE' }}
+          DATASET_GROUP: ${{ inputs.dataset_group || (github.event.schedule == '52 2,8,14,20 * * *' && 'MEMBERSHIP') || (github.event.schedule == '37 * * * *' && 'EXTENDED') || 'CORE' }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: fundamental-fleet-evidence
-          path: reports/fleet/
+          path: |
+            reports/fleet/
+            reports/membership/
           retention-days: 14

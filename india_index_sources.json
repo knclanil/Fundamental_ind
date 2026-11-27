@@ -1,0 +1,288 @@
+[
+  {
+    "code": "NIFTY_ALPHA_INDEX",
+    "name": "Nifty Alpha Index",
+    "category": "FACTOR",
+    "factors": [
+      "Alpha"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty_Alpha_Index.csv",
+    "expected": 50
+  },
+  {
+    "code": "NIFTY_DIVIDEND_OPPORTUNITIES_50",
+    "name": "Nifty Dividend Opportunities 50",
+    "category": "FACTOR",
+    "factors": [
+      "Dividend"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftydivopp50list.csv",
+    "expected": 50
+  },
+  {
+    "code": "NIFTY_LOW_VOLATILITY_50",
+    "name": "Nifty Low Volatility 50",
+    "category": "FACTOR",
+    "factors": [
+      "Low Volatility"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/nifty_low_Volatility50_Index.csv",
+    "expected": 50
+  },
+  {
+    "code": "NIFTY100_LOW_VOLATILITY_30",
+    "name": "Nifty100 Low Volatility 30",
+    "category": "FACTOR",
+    "factors": [
+      "Low Volatility"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_Nifty100LowVolatility30list.csv",
+    "expected": 30
+  },
+  {
+    "code": "NIFTY100_QUALITY_30",
+    "name": "Nifty100 Quality 30",
+    "category": "FACTOR",
+    "factors": [
+      "Quality"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty100Quality30list.csv",
+    "expected": 30
+  },
+  {
+    "code": "NIFTY200_ALPHA_30",
+    "name": "Nifty200 Alpha 30",
+    "category": "FACTOR",
+    "factors": [
+      "Alpha"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty200alpha30_list.csv",
+    "expected": 30
+  },
+  {
+    "code": "NIFTY200_MOMENTUM_30",
+    "name": "Nifty200 Momentum 30",
+    "category": "FACTOR",
+    "factors": [
+      "Momentum"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty200Momentum30_list.csv",
+    "expected": 30
+  },
+  {
+    "code": "NIFTY200_QUALITY_30",
+    "name": "Nifty200 Quality 30",
+    "category": "FACTOR",
+    "factors": [
+      "Quality"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty200Quality30_list.csv",
+    "expected": 30
+  },
+  {
+    "code": "NIFTY200_VALUE_30",
+    "name": "Nifty200 Value 30",
+    "category": "FACTOR",
+    "factors": [
+      "Value"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty200Value30_list.csv",
+    "expected": 30
+  },
+  {
+    "code": "NIFTY50_VALUE_20",
+    "name": "Nifty50 Value 20",
+    "category": "FACTOR",
+    "factors": [
+      "Value"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_Nifty50_Value20.csv",
+    "expected": 20
+  },
+  {
+    "code": "NIFTY500_GROWTH_50",
+    "name": "Nifty500 Growth 50",
+    "category": "FACTOR",
+    "factors": [
+      "Growth"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty500Growth50list.csv",
+    "expected": 50
+  },
+  {
+    "code": "NIFTY500_LOW_VOLATILITY_50",
+    "name": "Nifty500 Low Volatility 50",
+    "category": "FACTOR",
+    "factors": [
+      "Low Volatility"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty500LowVolatility50_list.csv",
+    "expected": 50
+  },
+  {
+    "code": "NIFTY500_MOMENTUM_50",
+    "name": "Nifty500 Momentum 50",
+    "category": "FACTOR",
+    "factors": [
+      "Momentum"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty500Momentum50_list.csv",
+    "expected": 50
+  },
+  {
+    "code": "NIFTY500_QUALITY_50",
+    "name": "Nifty500 Quality 50",
+    "category": "FACTOR",
+    "factors": [
+      "Quality"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty500Quality50_list.csv",
+    "expected": 50
+  },
+  {
+    "code": "NIFTY500_VALUE_50",
+    "name": "Nifty500 Value 50",
+    "category": "FACTOR",
+    "factors": [
+      "Value"
+    ],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty500Value50_list.csv",
+    "expected": 50
+  },
+  {
+    "code": "NIFTY_AUTO",
+    "name": "Nifty Auto",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftyautolist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_BANK",
+    "name": "Nifty Bank",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftybanklist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_ENERGY",
+    "name": "Nifty Energy",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftyenergylist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_FMCG",
+    "name": "Nifty FMCG",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftyfmcglist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_FINANCIAL_SERVICES",
+    "name": "Nifty Financial Services",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftyfinancelist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_IT",
+    "name": "Nifty IT",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftyitlist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_MEDIA",
+    "name": "Nifty Media",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftymedialist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_METAL",
+    "name": "Nifty Metal",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftymetallist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_OIL_GAS",
+    "name": "Nifty Oil & Gas",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftyoilgaslist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_PSU_BANK",
+    "name": "Nifty PSU Bank",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftypsubanklist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_PHARMA",
+    "name": "Nifty Pharma",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftypharmalist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_REALTY",
+    "name": "Nifty Realty",
+    "category": "SECTOR",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftyrealtylist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_INDIA_DEFENCE",
+    "name": "Nifty India Defence",
+    "category": "THEMATIC",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftyindiadefence_list.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_INDIA_MANUFACTURING",
+    "name": "Nifty India Manufacturing",
+    "category": "THEMATIC",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftyindiamanufacturing_list.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY_INFRASTRUCTURE",
+    "name": "Nifty Infrastructure",
+    "category": "THEMATIC",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_niftyinfralist.csv",
+    "expected": null
+  },
+  {
+    "code": "NIFTY50_EQUAL_WEIGHT",
+    "name": "Nifty50 Equal Weight",
+    "category": "STRATEGY",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_Nifty50EqualWeight.csv",
+    "expected": 50
+  },
+  {
+    "code": "NIFTY_500",
+    "name": "Nifty 500",
+    "category": "BENCHMARK",
+    "factors": [],
+    "url": "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv",
+    "expected": 500
+  }
+]
