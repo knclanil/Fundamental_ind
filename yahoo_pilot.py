@@ -94,7 +94,7 @@ def store(db,rows,stamp,sha,summary,remote=False):
         expected=len({tuple(r[k] for k in ('symbol','statement','metric','frequency','period_end','unit','value_raw')) for r in rows})
         if count!=expected:raise RuntimeError(f'Publication count mismatch: {count}/{expected}')
         summary['published_unique_facts']=count
-        db.run('INSERT OR REPLACE INTO misc_yahoo_runs VALUES(?,?)',(stamp,json.dumps(dict(summary,production='PUBLISHED_UNVERIFIED'))))
+        db.run('INSERT OR REPLACE INTO misc_yahoo_runs VALUES(?,?)',(stamp,json.dumps(dict(summary,production='STAGING'))))
         return
     for i,r in enumerate(rows):
         if remote and i%50==0 and os.getenv('YAHOO_IGNORE_STORAGE_BUDGET')!='true':db.guard()

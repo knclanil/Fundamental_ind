@@ -1,4 +1,4 @@
-name: Yahoo five-company pilot
+name: Fundamental production candidate
 on:
   push:
     branches: [main]
@@ -11,9 +11,9 @@ concurrency:
   group: fundamental-pilot
   cancel-in-progress: false
 jobs:
-  pilot:
+  candidate:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,18 +21,19 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
-      - name: Acquire and stage Yahoo data
+      - name: Audit legacy objects (read only)
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-          YAHOO_IGNORE_STORAGE_BUDGET: "true"
-        run: python yahoo_pilot.py --publish
-      - name: Deep accessor and coverage diagnostic
-        if: always()
-        run: python yahoo_deep.py
+        run: python legacy_retirement.py
+      - name: Acquire and stage candidate
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python production.py --publish
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: yahoo-pilot-evidence
-          path: reports/yahoo/
+          name: fundamental-production-evidence
+          path: reports/production/
           retention-days: 14
