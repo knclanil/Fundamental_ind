@@ -19,7 +19,7 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,7 +27,7 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: python -m pytest -q tests/test_rebuild.py
-      - run: python fleet.py --limit 500 --minutes 300 --group "$DATASET_GROUP"
+      - run: python fleet.py --limit 50 --minutes 40 --group "$DATASET_GROUP"
         env:
           DATASET_GROUP: ${{ inputs.dataset_group || (github.event.schedule == '37 * * * *' && 'EXTENDED') || 'CORE' }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}

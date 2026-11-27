@@ -1,4 +1,4 @@
-# Fundamental_ind 6.0.1 — clean rebuild
+# Fundamental_ind 6.0.3 — resumable acquisition
 
 Replace the repository contents (including hidden `.github` files) with this package. Remove old Python scripts/workflows from previous releases. Keep existing TURSO_DATABASE_URL and TURSO_AUTH_TOKEN secrets. Enable the Nifty 500 fundamentals workflow and dispatch it once. The pipeline initializes an empty database automatically; it refuses an unversioned nonempty database. No destructive SQL is executed. Do not use on the US database.
 
@@ -13,3 +13,10 @@ The workflow explicitly runs tests/test_rebuild.py; old tests are not compatible
 
 ## 6.0.2 — in-place EXTENDED recovery
 No schema migration or reset. Keep existing secrets and database. Replace repository files with this release. Scheduled CORE runs at minute 7 and EXTENDED at minute 37 each hour, serialized by the existing concurrency group. Existing six-hour retry delays are respected. Missing/empty modules are marked partial, not verified complete. Provider tables use split JSON (index, columns, data), including series converted to a one-column table. Successful modules survive other module acquisition/serialization errors. Logs include exception details and tracebacks; attempts.jsonl contains per-company outcomes. Existing five-failure circuit breaker remains. Live provider/Turso behavior has not been tested; the original production failure is not conclusively diagnosed. Existing historical coverage limitations remain.
+
+## 6.0.3 — bounded, resumable module acquisition
+Replace the repository files and push main; keep the database and secrets. The additive misc_module table and vw_fund_module_progress view initialize automatically under schema 6.0. Existing COMPLETE snapshots bootstrap available modules, without reacquiring them until due. Each company commits its results before the next; interrupted RUNNING entries remain eligible on a later run. Summary JSON is atomically replaced after each company. Runs are limited to 50 companies or 40 minutes (soft deadline between companies), with a 55-minute job timeout. CORE and EXTENDED retain separate hourly schedules and shared concurrency. Unchanged universe avoids repeated seed writes.
+
+Prices and shares are required; optional empty responses are NOT_AVAILABLE (provider returned no usable data, not proof of no events). Exceptions and empty required modules are RETRY_PENDING. AVAILABLE refreshes after seven days, NOT_AVAILABLE after 30 days, RETRY_PENDING after six hours. Only due modules are fetched. PUBLISHED_UNVERIFIED means required modules available and no outstanding module retries; it does not imply all optional datasets exist or that values are independently verified. Previously published payloads remain intact. Module status is the latest attempt, not a deletion of older data. A failed publication is retried at company level. No confirmed NO_EVENTS classification is attempted because Yahoo empty results cannot establish absence. Module progress covers initialized companies only. The storage guard remains 380 MB occupied; provider quota and live runtime are unverified. GitHub scheduling may delay or replace pending runs; the next scheduled run resumes from persisted queue state. No live Yahoo/Turso tests were performed.
+
+Monitor: SELECT * FROM vw_fund_acquisition_progress; SELECT * FROM vw_fund_module_progress;

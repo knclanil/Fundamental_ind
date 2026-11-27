@@ -21,3 +21,5 @@ CREATE VIEW IF NOT EXISTS vw_fund_annual AS SELECT * FROM vw_fund_observations W
 CREATE VIEW IF NOT EXISTS vw_fund_quarterly AS SELECT * FROM vw_fund_observations WHERE frequency='QUARTERLY';
 CREATE VIEW IF NOT EXISTS vw_fund_ttm AS SELECT * FROM vw_fund_observations WHERE frequency='TTM';
 CREATE VIEW IF NOT EXISTS vw_fund_growth AS SELECT a.symbol,a.frequency,a.period_end,a.unit,CASE WHEN a.unit=b.unit AND a.unit IN ('INR','USD') AND b.display_value>0 THEN 100.0*(a.display_value/b.display_value-1) END revenue_yoy_pct FROM vw_fund_cells a LEFT JOIN vw_fund_cells b ON a.symbol=b.symbol AND a.frequency=b.frequency AND a.statement=b.statement AND a.metric=b.metric AND b.period_end=date(a.period_end,'-1 year') WHERE a.statement='PNL' AND a.metric='Total Revenue';
+CREATE TABLE IF NOT EXISTS misc_module(company_id INTEGER NOT NULL REFERENCES dm_company(id),module TEXT NOT NULL,status TEXT NOT NULL,next_retry TEXT,last_attempt TEXT,PRIMARY KEY(company_id,module)) WITHOUT ROWID;
+CREATE VIEW IF NOT EXISTS vw_fund_module_progress AS SELECT module,status,count(*) companies FROM misc_module JOIN dm_company ON id=company_id WHERE active=1 GROUP BY module,status;

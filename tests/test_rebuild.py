@@ -63,3 +63,22 @@ def test_extended_isolation_and_preservation(tmp_path,monkeypatch):
   assert hashlib.sha256(gzip.decompress(b)).digest()==h
   assert json.loads(gzip.decompress(b))==payload[module]
  assert not d.run('PRAGMA foreign_key_check')
+
+def test_module_resume(tmp_path,monkeypatch):
+ from fleet import extended_plan,record_modules,extended_status,MODULES,REQUIRED,acquire
+ d=DB(str(tmp_path/'resume.db'));d.init();seed(d,{'HEGRAPHITE':('INE000000001','Test','Graphite')});cid=d.run('SELECT id FROM dm_company')[0][0]
+ publish(d,cid,'HEGRAPHITE',[],[],{'prices':{'x':1}},[])
+ assert set(extended_plan(d,cid))==set(MODULES)-{'prices'}
+ record_modules(d,cid,[{'module':m,'status':'AVAILABLE' if m in REQUIRED else 'NOT_AVAILABLE'} for m in MODULES if m!='prices'])
+ assert extended_status(d,cid)=='PUBLISHED_UNVERIFIED'
+ assert extended_plan(d,cid)==[]
+ record_modules(d,cid,[{'module':'shares','status':'RETRY_PENDING'}])
+ assert extended_status(d,cid)=='PARTIAL'
+ d.run("UPDATE misc_module SET next_retry='2000-01-01' WHERE module='shares'")
+ assert extended_plan(d,cid)==['shares']
+ monkeypatch.setenv('YAHOO_DELAY','0')
+ class Ticker:
+  def get_shares_full(self):return {'x':1}
+ _,cov,payload,errors=acquire(lambda _:Ticker(),'HEGRAPHITE','EXTENDED',['shares'])
+ assert cov==[{'module':'shares','status':'AVAILABLE'}] and set(payload)=={'shares'} and not errors
+ d.init();assert d.run('SELECT count(*) FROM ft_extended')==[(1,)]

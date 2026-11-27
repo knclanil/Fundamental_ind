@@ -1,2 +1,1 @@
-.....                                                                    [100%]
-5 passed in 0.16s
+6.0.3 local verification: 6 pytest tests passed; compileall passed. No live provider or Turso tests.
