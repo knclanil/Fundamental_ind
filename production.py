@@ -14,20 +14,20 @@ def encode(x):
     if hasattr(x,'to_json'):return json.loads(x.to_json(date_format='iso'))
     return x
 
-def acquire(factory):
+def acquire(factory, symbols=None):
     rows=[]; coverage=[]; payloads=[]; audit=[]
-    for s in WATCH:
+    for s in (symbols if symbols is not None else WATCH):
         t=factory(s+'.NS'); currency=None
         for name,fn in MODULES.items():
             try:
-                time.sleep(1.2); v=fn(t); data=encode(v)
+                time.sleep(float(os.getenv("YAHOO_DELAY", "1.2"))); v=fn(t); data=encode(v)
                 if name=='profile':currency=v.get('financialCurrency')
                 payloads.append(dict(symbol=s,module=name,data=data)); status='AVAILABLE' if data else 'EMPTY'
             except Exception as e:status=type(e).__name__
             audit.append(dict(symbol=s,module=name,status=status))
         for route in ROUTES:
             try:
-                time.sleep(1.2); batch=extract(getattr(t,route),s,route,currency); rows.extend(batch); status='AVAILABLE' if batch else 'EMPTY'
+                time.sleep(float(os.getenv("YAHOO_DELAY", "1.2"))); batch=extract(getattr(t,route),s,route,currency); rows.extend(batch); status='AVAILABLE' if batch else 'EMPTY'
             except Exception as e:batch=[];status=type(e).__name__
             ends=sorted({r['period_end'] for r in batch});coverage.append(dict(symbol=s,route=route,facts=len(batch),periods=len(ends),earliest=min(ends,default=''),latest=max(ends,default=''),currency=currency or 'UNKNOWN'));audit.append(dict(symbol=s,module=route,status=status))
     return rows,coverage,payloads,audit
@@ -55,7 +55,7 @@ def run(db,rows,coverage,payloads,stamp,sha,remote=False):
     classified=classify(rows,coverage); checks=validate(classified); fresh=freshness(classified); summary={}
     db.run('CREATE TABLE IF NOT EXISTS misc_yahoo_publication(retrieved TEXT PRIMARY KEY,sha TEXT,status TEXT)')
     db.run('INSERT OR IGNORE INTO misc_yahoo_publication VALUES(?,?,?)',(stamp,sha,'STAGING'))
-    store(db,rows,stamp,sha,summary,remote);persist(db,classified,checks,fresh,stamp,sha);payload_store(db,payloads,stamp);install(db)
+    store(db,rows,stamp,sha,summary,remote);persist(db,classified,checks,fresh,stamp,sha);payload_store(db,payloads,stamp);install(db, count_views=not remote)
     db.run("UPDATE misc_yahoo_publication SET status='COMPLETE' WHERE retrieved=? AND sha=?",(stamp,sha))
     return classified,checks,fresh
 

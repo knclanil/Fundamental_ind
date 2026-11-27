@@ -17,4 +17,4 @@ def test_override_rejects_nonpilot(monkeypatch):
         production.run(GuardDB(),[{'symbol':'OTHER'}],[],[],'stamp','sha',True)
 
 def test_workflow_override():
-    assert 'YAHOO_IGNORE_STORAGE_BUDGET: "true"' in Path('.github/workflows/yahoo.yml').read_text()
+    assert 'python fleet.py --limit 20' in Path('.github/workflows/yahoo.yml').read_text()

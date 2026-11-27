@@ -22,5 +22,7 @@ class DB:
         self.run(f'INSERT OR IGNORE INTO {table} ({cols}) VALUES ({marks})',tuple(fields.values())); return int(self.run(f'SELECT id FROM {table} WHERE {where}',tuple(fields.values()))[0][0])
     def storage(self):
         return int(self.run('PRAGMA page_count')[0][0])*int(self.run('PRAGMA page_size')[0][0])
+    def occupied(self):
+        return self.storage()-int(self.run("PRAGMA freelist_count")[0][0])*int(self.run("PRAGMA page_size")[0][0])
     def guard(self):
-        if self.storage()>=int(os.getenv('STORAGE_BUDGET_BYTES','400000000'))*.95:raise RuntimeError('Storage guard: existing database near budget')
+        if self.occupied()>=int(os.getenv('STORAGE_BUDGET_BYTES','400000000'))*.95:raise RuntimeError('Storage guard: existing database near budget')

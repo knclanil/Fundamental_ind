@@ -1,19 +1,19 @@
-name: Fundamental production candidate
+name: Nifty 500 fundamentals
 on:
   push:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: '30 13 * * 1-5'
+    - cron: '7,37 * * * *'
 permissions:
   contents: read
 concurrency:
   group: fundamental-pilot
   cancel-in-progress: false
 jobs:
-  candidate:
+  ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,20 +21,13 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
-      - name: Audit legacy objects (read only)
+      - run: python fleet.py --limit 500 --minutes 300
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-        run: python legacy_retirement.py
-      - name: Acquire and stage candidate
-        env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-          YAHOO_IGNORE_STORAGE_BUDGET: "true"
-        run: python production.py --publish
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: fundamental-production-evidence
-          path: reports/production/
+          name: fundamental-fleet-evidence
+          path: reports/fleet/
           retention-days: 14

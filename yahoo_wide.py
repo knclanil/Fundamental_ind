@@ -6,7 +6,7 @@ KEY='symbol,frequency,period_end'
 ALIASES={'Total Revenue':'revenue','Basic EPS':'eps','Pretax Income':'pbt','Total Liabilities Net Minority Interest':'total_liabilities','Total Equity Gross Minority Interest':'total_equity'}
 def quote(s):return '"'+s.replace('"','""')+'"'
 def literal(s):return "'"+s.replace("'","''")+"'"
-def install(db):
+def install(db, count_views=True):
     db.run('CREATE TABLE IF NOT EXISTS misc_yahoo_publication(retrieved TEXT PRIMARY KEY,sha TEXT,status TEXT)')
     views={}
     views['latest'] = '''WITH ranked AS (SELECT *,DENSE_RANK() OVER(PARTITION BY symbol,statement,frequency,period_end,metric ORDER BY retrieved DESC,snapshot_sha DESC) AS snapshot_rank FROM vw_fund_yahoo_classified WHERE NOT EXISTS (SELECT 1 FROM misc_yahoo_publication p WHERE p.retrieved=vw_fund_yahoo_classified.retrieved AND p.status<>'COMPLETE')) SELECT * FROM ranked WHERE snapshot_rank=1'''
@@ -29,4 +29,4 @@ def install(db):
     views['growth']='''SELECT a.*,CASE WHEN a.pnl_currency=b.pnl_currency AND a.pnl_currency IN ('INR','USD') AND b.revenue>0 THEN 100.0*(a.revenue/b.revenue-1) END AS revenue_yoy_pct FROM vw_fund_yahoo_financial_summary a LEFT JOIN vw_fund_yahoo_financial_summary b ON a.symbol=b.symbol AND a.frequency=b.frequency AND substr(a.period_end,6)=substr(b.period_end,6) AND CAST(substr(a.period_end,1,4) AS INTEGER)=CAST(substr(b.period_end,1,4) AS INTEGER)+1'''
     for name,sql in views.items():
         db.run('DROP VIEW IF EXISTS vw_fund_yahoo_'+name);db.run('CREATE VIEW vw_fund_yahoo_'+name+' AS '+sql)
-    return {name:int(db.run('SELECT COUNT(*) FROM vw_fund_yahoo_'+name)[0][0]) for name in views}
+    return {} if not count_views else {name:int(db.run('SELECT COUNT(*) FROM vw_fund_yahoo_'+name)[0][0]) for name in views}

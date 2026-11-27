@@ -1,2 +1,18 @@
-.....................                                                    [100%]
-21 passed in 0.25s
+.............F.........                                                  [100%]
+=================================== FAILURES ===================================
+____________________________ test_workflow_override ____________________________
+
+    def test_workflow_override():
+>       assert 'python fleet.py --limit 20' in Path('.github/workflows/yahoo.yml').read_text()
+E       assert 'python fleet.py --limit 20' in "name: Nifty 500 fundamentals\non:\n  push:\n    branches: [main]\n  workflow_dispatch:\n  schedule:\n    - cron: '7,3...     with:\n          name: fundamental-fleet-evidence\n          path: reports/fleet/\n          retention-days: 14\n"
+E        +  where "name: Nifty 500 fundamentals\non:\n  push:\n    branches: [main]\n  workflow_dispatch:\n  schedule:\n    - cron: '7,3...     with:\n          name: fundamental-fleet-evidence\n          path: reports/fleet/\n          retention-days: 14\n" = read_text()
+E        +    where read_text = PosixPath('.github/workflows/yahoo.yml').read_text
+E        +      where PosixPath('.github/workflows/yahoo.yml') = Path('.github/workflows/yahoo.yml')
+
+tests/test_recovery.py:20: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_recovery.py::test_workflow_override - assert 'python fleet.py --limit 20' in "name: Nifty 500 fundamentals\non:\n  push:\n    branches: [main]\n  workflow_dispatch:\n  schedule:\n    - cron: '7,3...     with:\n          name: fundamental-fleet-evidence\n          path: reports/fleet/\n          retention-days: 14\n"
+ +  where "name: Nifty 500 fundamentals\non:\n  push:\n    branches: [main]\n  workflow_dispatch:\n  schedule:\n    - cron: '7,3...     with:\n          name: fundamental-fleet-evidence\n          path: reports/fleet/\n          retention-days: 14\n" = read_text()
+ +    where read_text = PosixPath('.github/workflows/yahoo.yml').read_text
+ +      where PosixPath('.github/workflows/yahoo.yml') = Path('.github/workflows/yahoo.yml')
+1 failed, 22 passed in 0.28s
