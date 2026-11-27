@@ -130,13 +130,19 @@ def main():
     summary=dict(companies=len({r['symbol'] for r in rows}),facts=len(rows),errors=errors,sha256=sha,expansion_allowed=False,independent_verification=False,production='NOT_ATTEMPTED',coverage_gaps=[c for c in coverage if not c['facts']],currency_basis='Provider metadata; unverified',storage_budget_override=os.getenv('YAHOO_IGNORE_STORAGE_BUDGET')=='true',replayed=bool(a.replay))
     summary['classified_facts']=sum(r['classified_unit']!='UNKNOWN' for r in classified);summary['quality_gate']='BLOCKED_UNVERIFIED'
     for name,data in [('classified',classified),('freshness',fresh),('observations',rows),('coverage',coverage),('accounting',validation)]:csvout(out/(name+'.csv'),data)
-    local=DB.__new__(DB);local.local=sqlite3.connect(out/'pilot.sqlite');local.local.execute('PRAGMA foreign_keys=ON');store(local,rows,stamp,sha,summary);persist(local,classified,validation,fresh,stamp,sha);local.local.close()
+    local=DB.__new__(DB);local.local=sqlite3.connect(out/'pilot.sqlite');local.local.execute('PRAGMA foreign_keys=ON');store(local,rows,stamp,sha,summary);persist(local,classified,validation,fresh,stamp,sha);
+    from yahoo_wide import install
+    summary["wide_views"]=install(local)
+    for name in ("pnl_wide","bs_wide","cf_wide","financial_summary","completeness"):
+        cursor=local.local.execute("SELECT * FROM vw_fund_yahoo_"+name+" ORDER BY symbol,frequency,period_end DESC")
+        csvout(out/(name+".csv"),[dict(zip([d[0] for d in cursor.description],r)) for r in cursor.fetchall()])
+    local.local.close()
     try:
         if a.publish:
             if a.replay:raise RuntimeError('Replay is local only; original retrieval timestamp unavailable')
             if not os.getenv('TURSO_DATABASE_URL') or not os.getenv('TURSO_AUTH_TOKEN'):raise RuntimeError('Missing Turso credentials')
             if not publishable(rows):raise RuntimeError('Missing annual statement for a pilot company; publication blocked')
-            remote=DB();store(remote,rows,stamp,sha,summary,True);summary['published_classified_facts']=persist(remote,classified,validation,fresh,stamp,sha);summary['production']='PUBLISHED_UNVERIFIED'
+            remote=DB();store(remote,rows,stamp,sha,summary,True);summary['published_classified_facts']=persist(remote,classified,validation,fresh,stamp,sha);summary['remote_wide_views']=install(remote);summary['production']='PUBLISHED_UNVERIFIED'
     except Exception as e:summary['production']='BLOCKED_OR_PARTIAL';summary['publish_error']=str(e);raise
     finally:(out/'summary.json').write_text(json.dumps(summary,indent=2))
     if not publishable(rows):raise SystemExit(2)
