@@ -18,11 +18,12 @@ class DB:
    return {'type':'text','value':str(x)}
   r=self.session.post(self.url,headers={'Authorization':'Bearer '+self.token},json={'requests':[{'type':'execute','stmt':{'sql':sql,'args':[val(x) for x in args]}},{'type':'close'}]},timeout=60);r.raise_for_status();res=r.json()['results'][0]
   if res['type']=='error':raise RuntimeError(res['error']['message'])
-  return [[v.get('value') for v in row] for row in res['response']['result']['rows']]
+  return [[base64.b64decode(v['base64']) if v['type']=='blob' else int(v['value']) if v['type']=='integer' else float(v['value']) if v['type']=='float' else v.get('value') for v in row] for row in res['response']['result']['rows']]
  def init(self):
   names={r[0] for r in self.run("SELECT name FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'")}
   if names and 'misc_schema_version' not in names:raise RuntimeError('Nonempty legacy database; refusing initialization')
   if 'misc_schema_version' in names and self.run('SELECT version FROM misc_schema_version') not in ([('6.0',)],[['6.0']],[]):raise RuntimeError('Wrong schema version')
   for s in Path(__file__).with_name('schema.sql').read_text().split(';'):
    if s.strip():self.run(s)
+ def storage(self):return int(self.run('PRAGMA page_count')[0][0])*int(self.run('PRAGMA page_size')[0][0])
  def occupied(self):return (int(self.run('PRAGMA page_count')[0][0])-int(self.run('PRAGMA freelist_count')[0][0]))*int(self.run('PRAGMA page_size')[0][0])

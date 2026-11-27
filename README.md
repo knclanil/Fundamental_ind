@@ -1,4 +1,4 @@
-# Fundamental_ind 6.0 — clean rebuild
+# Fundamental_ind 6.0.1 — clean rebuild
 
 Replace the repository contents (including hidden `.github` files) with this package. Remove old Python scripts/workflows from previous releases. Keep existing TURSO_DATABASE_URL and TURSO_AUTH_TOKEN secrets. Enable the Nifty 500 fundamentals workflow and dispatch it once. The pipeline initializes an empty database automatically; it refuses an unversioned nonempty database. No destructive SQL is executed. Do not use on the US database.
 
@@ -7,3 +7,6 @@ Core statements are collected first. Each company is checkpointed, and subsequen
 SQL: `SELECT * FROM vw_fund_acquisition_progress;` and `SELECT * FROM vw_fund_pnl_wide;`. BS and CF wide views are also available. Wide columns use INR crore and USD million, native EPS and shares; consult `vw_fund_cells` for units and conflicts. Unknown units remain null in wide views. Exact source decimal strings remain in history. Compressed payloads are gzip binary; verify SHA-256 after decompression. Snapshot status gates visibility of incomplete writes. Staging records are retained for audit, not automatically removed. The storage guard checks occupied pages before each company; it is not a hard provider quota guarantee.
 
 The schema differs from the earlier proposed 25-table design: it uses fewer tables and combines unit/classification dimensions with metric metadata, storing repeated values once and linking snapshots. Market history is compressed JSON, not normalized OHLC rows. No official exchange backfill, independent verification, separate standalone/consolidated feeds, full ratio suite, or automatic backup is implemented. No live Turso or Yahoo testing was possible in this environment. Local tests cover schema initialization, legacy refusal, deduplication, revisions, compression and wide output. The prior historical database was reset by the user; it cannot be reconstructed exactly from this package.
+
+## Upgrade from mixed legacy checkout
+The workflow explicitly runs tests/test_rebuild.py; old tests are not compatible with this schema. Restore that file from this archive. Prefer a clean replacement using git rm -r . from the repository root (after checking git status), then extract this archive into that root, git add -A, commit and push. Do not remove .git. No database reset is needed. Schema version remains 6.0. Old workflows must be disabled or removed.

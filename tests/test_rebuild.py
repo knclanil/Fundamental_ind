@@ -20,3 +20,16 @@ def test_legacy_refusal(tmp_path):
  import pytest
  d=DB(str(tmp_path/'legacy.db'));d.run('CREATE TABLE legacy(x)')
  with pytest.raises(RuntimeError):d.init()
+
+def test_reusable_pages(tmp_path):
+ d=DB(str(tmp_path/'pages.db'));d.run('CREATE TABLE t(x)');d.run('INSERT INTO t VALUES(zeroblob(100000))');d.run('DROP TABLE t');assert d.occupied()<d.storage()
+
+def test_remote_types(monkeypatch):
+ import base64
+ monkeypatch.setenv('TURSO_DATABASE_URL','libsql://example.invalid');monkeypatch.setenv('TURSO_AUTH_TOKEN','test')
+ d=DB()
+ class Response:
+  def raise_for_status(self):pass
+  def json(self):return {'results':[{'type':'ok','response':{'result':{'rows':[[{'type':'integer','value':'3'},{'type':'blob','base64':'YWJj'},{'type':'null'}]]}}}]}
+ monkeypatch.setattr(d.session,'post',lambda *a,**k:Response())
+ assert d.run('SELECT 1')==[[3,b'abc',None]]
