@@ -1,1 +1,2 @@
-Local pytest: 9 passed. Python compilation: passed. Live NSE/Turso: not tested.
+...........                                                              [100%]
+11 passed in 0.14s

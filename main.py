@@ -2,7 +2,7 @@ import argparse,json,hashlib,gzip,os
 from pathlib import Path
 from datetime import date,datetime
 from database import DB
-from nse_extractor import NSE,parse,scope
+from nse_extractor import NSE,parse,scope,ET,local
 from quality_checks import checks
 ROOT=Path(__file__).parent
 WATCH=json.loads((ROOT/'watchlist.json').read_text())
@@ -20,10 +20,10 @@ def published(row):
     return None
 def load(db,symbol,route,row,url,raw):
     sha=archive(raw); facts,issues=parse(raw,scope(row.get('consolidated') or row.get('consolidation') or row.get('resultType'))); db.guard()
-    isin,sector=WATCH[symbol]; cid=db.id('dm_company',symbol=symbol,isin=isin,sector=sector)
-    db.run('INSERT OR IGNORE INTO dm_filing(company_id,url,sha,published,seq,endpoint) VALUES(?,?,?,?,?,?)',(cid,url,sha,published(row),str(row.get('seqNumber') or ''),route)); fid=int(db.run('SELECT id FROM dm_filing WHERE company_id=? AND url=? AND sha=?',(cid,url,sha))[0][0]); n=0
+    isin,sector=WATCH[symbol]; root=ET.fromstring(raw); declared={e.text.strip() for e in root if local(e.tag)=='ISIN' and e.text}; declared_symbols={e.text.strip() for e in root if local(e.tag)=='Symbol' and e.text}; codes={'RELIANCE':'500325','INFY':'500209','HDFCBANK':'500180','TATASTEEL':'500470','HINDUNILVR':'500696'}; cid=db.id('dm_company',symbol=symbol,isin=isin,sector=sector)
+    db.run('INSERT OR IGNORE INTO dm_filing(company_id,url,sha,published,seq,endpoint) VALUES(?,?,?,?,?,?)',(cid,url,sha,published(row),str(row.get('seqNumber') or row.get('seq_Id') or ''),route)); fid=int(db.run('SELECT id FROM dm_filing WHERE company_id=? AND url=? AND sha=?',(cid,url,sha))[0][0]); n=0
     for f in facts:
-        if f['entity']!=isin: f['status']='UNMAPPED_OR_AMBIGUOUS'
+        if f['entity']!=isin and not (declared=={isin} and declared_symbols=={symbol} and f['entity'] in (symbol,codes[symbol])): f['status']='UNMAPPED_OR_AMBIGUOUS'
         if f['status']!='CANDIDATE':issues.append(f);continue
         if n%100==0:db.guard()
         mid=db.id('dm_metric',code=f['code'],statement=f['statement']); pid=db.id('dm_period',start=f['start'],end=f['end'],kind=f['period']); xid=db.id('dm_context',scope=f['scope'],dimensions=f['dimensions']); uid=db.id('dm_unit',name=f['unit']); fact=db.id('ft_financials',company_id=cid,metric_id=mid,period_id=pid,context_id=xid,unit_id=uid,value_raw=f['value'],status='CANDIDATE'); db.run('INSERT OR IGNORE INTO ft_source_reference VALUES(?,?,?,?)',(fact,fid,f['tag'],f['decimals'])); n+=1
@@ -43,7 +43,7 @@ def main():
         # Stop this source on access denial; never switch hosts to evade a denial.
         for year in range(today.year,fy-a.backfill_years-1,-1):
             for symbol in symbols:
-                for route in ('financial-results','corporates-financial-results','integrated-filing-results','annual-reports'):
+                for route in ('integrated-filing-results','corporates-financial-results','annual-reports'):
                     if route=='integrated-filing-results' and year<2024:continue
                     if route=='annual-reports' and year!=today.year:continue
                     if jobs>=a.max_jobs:break
@@ -56,10 +56,14 @@ def main():
                         for raw,rows,params in client.discover(symbol,year,route):
                             archive(raw);rec['rows']+=len(rows);rec['params']=params
                             for row in rows:
-                                if not isinstance(row,dict) or str(row.get('symbol','')).upper()!=symbol:continue
+                                if not isinstance(row,dict):continue
+                                if route=='annual-reports':
+                                    if isinstance(row.get('fileName'),str):rec['pdf_links'].append(row['fileName'])
+                                    continue
+                                if str(row.get('symbol','')).upper()!=symbol:continue
                                 urls=set()
                                 for k,v in row.items():
-                                    if isinstance(v,str) and v.startswith('https://') and ('xbrl' in k.lower() or v.lower().split('?')[0].endswith('.xml')):urls.add(v)
+                                    if isinstance(v,str) and v.startswith('https://') and (v.lower().split('?')[0].endswith('.xml')):urls.add(v)
                                     elif isinstance(v,str) and v.startswith('https://') and v.lower().split('?')[0].endswith('.pdf'):rec['pdf_links'].append(v)
                                 for url in urls:
                                     try:
