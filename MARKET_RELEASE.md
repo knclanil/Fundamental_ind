@@ -24,3 +24,6 @@ Production SAILIFE failed at PAYLOAD_LOOKUP before download. The remote adapter 
 
 ## Full market execution
 Workflow MARKET limit increased to 1000. Existing due dates, storage guards and 55-minute job timeout remain unchanged. Live full-universe execution not verified.
+
+## Sector and factor source update
+17 new Yahoo aliases (8 user supplied, 9 inferred). Existing mappings preserved. New aliases require Yahoo INDEX quote type and matching symbol; this is not independent benchmark verification. Full index backfill requires at least 230 rows and complete OHLC; freshness tolerance seven calendar days. This is a heuristic, not exchange-calendar completeness. Newly configured indices bypass old unsupported-source retry timestamps. Existing scheduled MARKET workflow continues; optional `python market.py --index-only --limit 1000` limits acquisition to mapped indices. Four thematic/strategy fund proxies intentionally excluded from official index storage. No live Yahoo or Turso validation performed. Built from previous full-market ZIP because GitHub DNS failed.
