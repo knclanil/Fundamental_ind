@@ -15,3 +15,6 @@ SELECT * FROM vw_market_data_coverage;
 SELECT * FROM vw_market_acquisition_progress;
 ```
 Window-based analytics can be expensive on remote full-universe queries; use bounded queries and local processing. No quota reduction measurement or complete historical data guarantee. Tests use synthetic data only.
+
+## Recovery correction
+Existing MARKET schedule automatically prioritizes up to five due failed entities per run, then ordinary work, then remaining due failures. Detailed per-entity attempts, stage and redacted exception messages appear in market/summary.json. Database failures stop the batch rather than being classified as provider failures. Transient download exceptions receive at most three attempts. Invalid cached payloads fall back to Yahoo; existing rows and ticker mappings are preserved. Unsupported indices remain explicit. No live provider or Turso validation performed; alternate ticker mappings are not guessed. No schema reset or new secrets. Deploy the complete archive including .github. Existing scheduled MARKET runs pick up the correction automatically. Tests use local SQLite and simulated provider responses.
