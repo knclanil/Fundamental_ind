@@ -45,3 +45,6 @@ Not completed: official economic hierarchy, weight history, discovery/fallback e
 
 ### 8.0 correction candidate
 Financial base now includes EPS (unscaled), pretax income and investing/financing cash flow. Changed intelligence views are replaced without deleting facts. `vw_missing_financial_periods` identifies missing core metrics for March year ends 2022–2026; this is a gap indicator, not complete statement certification. Reporting basis remains UNKNOWN. EXTENDED publication now requires prices and shares only; optional module statuses remain separate. Fleet prioritizes unpublished companies, compares retry timestamps using julianday and reports selected/attempted counts and stop reason. Storage guards remain unchanged. No live Turso or external reconciliation performed. Full historical backfill, source verification, CORE completeness redesign and performance optimization remain outstanding. Deploy only as a correction candidate, not a completed 8.0 release.
+
+## Market tracking candidate
+See [MARKET_RELEASE.md](MARKET_RELEASE.md) for deployment, SQL and limitations.

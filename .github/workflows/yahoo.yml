@@ -6,12 +6,13 @@ on:
     inputs:
       dataset_group:
         type: choice
-        options: [CORE, EXTENDED, MEMBERSHIP]
+        options: [CORE, EXTENDED, MEMBERSHIP, MARKET]
         default: CORE
   schedule:
-    - cron: '7 * * * *'
-    - cron: '37 * * * *'
-    - cron: '52 2,8,14,20 * * *'
+    - cron: '7 1,7,13,19 * * *'
+    - cron: '37 3,9,15,21 * * *'
+    - cron: '52 2 * * *'
+    - cron: '17 0,4,8,12,16,20 * * *'
 permissions:
   contents: read
 concurrency:
@@ -28,9 +29,9 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: python -m pytest -q tests
-      - run: if [ "$DATASET_GROUP" = MEMBERSHIP ]; then python membership.py && python intelligence.py; else python fleet.py --limit 50 --minutes 40 --group "$DATASET_GROUP"; fi
+      - run: if [ "$DATASET_GROUP" = MEMBERSHIP ]; then python membership.py && python intelligence.py; elif [ "$DATASET_GROUP" = MARKET ]; then python market.py --limit 100; else python fleet.py --limit 50 --minutes 40 --group "$DATASET_GROUP"; fi
         env:
-          DATASET_GROUP: ${{ inputs.dataset_group || (github.event.schedule == '52 2,8,14,20 * * *' && 'MEMBERSHIP') || (github.event.schedule == '37 * * * *' && 'EXTENDED') || 'CORE' }}
+          DATASET_GROUP: ${{ inputs.dataset_group || (github.event.schedule == '17 0,4,8,12,16,20 * * *' && 'MARKET') || (github.event.schedule == '52 2 * * *' && 'MEMBERSHIP') || (github.event.schedule == '37 3,9,15,21 * * *' && 'EXTENDED') || 'CORE' }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
       - uses: actions/upload-artifact@v4
@@ -41,4 +42,5 @@ jobs:
             reports/fleet/
             reports/membership/
             reports/intelligence/
+            reports/market/
           retention-days: 14
