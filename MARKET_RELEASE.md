@@ -21,3 +21,6 @@ Existing MARKET schedule automatically prioritizes up to five due failed entitie
 
 ### Recovery hotfix: Incorrect padding
 Production SAILIFE failed at PAYLOAD_LOOKUP before download. The remote adapter previously required padded Base64; it now restores missing padding and validates the alphabet. Market cached payload retrieval uses SQLite hex() and decodes inside the existing cache-parse fallback. Genuine database failures still stop acquisition. Existing retry timestamps are preserved. No database migration or reset. 24 local tests passed, including mocked unpadded remote BLOB responses; live recovery remains unverified.
+
+## Full market execution
+Workflow MARKET limit increased to 1000. Existing due dates, storage guards and 55-minute job timeout remain unchanged. Live full-universe execution not verified.

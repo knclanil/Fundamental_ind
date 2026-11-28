@@ -29,7 +29,7 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: python -m pytest -q tests
-      - run: if [ "$DATASET_GROUP" = MEMBERSHIP ]; then python membership.py && python intelligence.py; elif [ "$DATASET_GROUP" = MARKET ]; then python market.py --limit 100; else python fleet.py --limit 50 --minutes 40 --group "$DATASET_GROUP"; fi
+      - run: if [ "$DATASET_GROUP" = MEMBERSHIP ]; then python membership.py && python intelligence.py; elif [ "$DATASET_GROUP" = MARKET ]; then python market.py --limit 1000; else python fleet.py --limit 50 --minutes 40 --group "$DATASET_GROUP"; fi
         env:
           DATASET_GROUP: ${{ inputs.dataset_group || (github.event.schedule == '17 0,4,8,12,16,20 * * *' && 'MARKET') || (github.event.schedule == '52 2 * * *' && 'MEMBERSHIP') || (github.event.schedule == '37 3,9,15,21 * * *' && 'EXTENDED') || 'CORE' }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
