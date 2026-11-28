@@ -92,7 +92,7 @@ def record_modules(db,cid,cov):
   db.run('UPDATE misc_module SET status=?,next_retry=?,last_attempt=? WHERE company_id=? AND module=?',(status,(datetime.now(timezone.utc)+delay).isoformat(),now(),cid,item['module']))
 def extended_status(db,cid):
  states=dict(db.run('SELECT module,status FROM misc_module WHERE company_id=?',(cid,)))
- return 'PUBLISHED_UNVERIFIED' if all(states.get(m)=='AVAILABLE' for m in REQUIRED) and not any(v in ('PENDING','RETRY_PENDING') for v in states.values()) else 'PARTIAL'
+ return 'PUBLISHED_UNVERIFIED' if all(states.get(m)=='AVAILABLE' for m in REQUIRED) else 'PARTIAL'
 def checkpoint(db,out,failures):
  report={'queue':db.run('SELECT * FROM vw_fund_acquisition_progress'),'modules':db.run('SELECT * FROM vw_fund_module_progress'),'occupied_bytes':db.occupied(),'failures':failures}
  temp=out/'summary.tmp';temp.write_text(json.dumps(report,indent=2));temp.replace(out/'summary.json');return report
@@ -107,8 +107,12 @@ def main():
  members=refresh(db,out)
  if members is not None:seed(db,members)
  checkpoint(db,out,failures)
- for cid,s in db.run("SELECT c.id,c.symbol FROM misc_queue q JOIN dm_company c ON c.id=q.company_id WHERE c.active=1 AND q.dataset_group=? AND (q.next_retry IS NULL OR q.next_retry<=?) AND (q.dataset_group='EXTENDED' OR q.last_success IS NULL OR q.last_success<?) ORDER BY COALESCE(q.last_attempt,''),c.symbol LIMIT ?",(a.group,now(),(datetime.now(timezone.utc)-timedelta(days=7)).isoformat(),a.limit)):
-  if time.monotonic()>=deadline or db.occupied()>=380000000 or db.storage()>=400000000:break
+ selected=db.run("SELECT c.id,c.symbol FROM misc_queue q JOIN dm_company c ON c.id=q.company_id WHERE c.active=1 AND q.dataset_group=? AND (q.next_retry IS NULL OR julianday(q.next_retry)<=julianday(?)) AND (q.dataset_group='EXTENDED' OR q.last_success IS NULL OR q.last_success<?) ORDER BY CASE WHEN q.status='PUBLISHED_UNVERIFIED' THEN 1 ELSE 0 END,COALESCE(q.last_attempt,''),c.symbol LIMIT ?",(a.group,now(),(datetime.now(timezone.utc)-timedelta(days=7)).isoformat(),a.limit))
+ outcome='NO_ELIGIBLE_COMPANIES' if not selected else 'BATCH_FINISHED';attempted=0
+ for cid,s in selected:
+  if time.monotonic()>=deadline:outcome='TIME_LIMIT_REACHED';break
+  if db.occupied()>=380000000 or db.storage()>=400000000:outcome='STORAGE_GUARD_TRIGGERED';break
+  attempted+=1
   cid=int(cid);db.run("UPDATE misc_queue SET status='RUNNING',attempts=attempts+1,last_attempt=? WHERE company_id=? AND dataset_group=?",(now(),cid,a.group))
   cov=[]
   try:
@@ -127,7 +131,7 @@ def main():
   if a.group=='EXTENDED' and status!='FAILED':db.run('UPDATE misc_queue SET next_retry=(SELECT MIN(next_retry) FROM misc_module WHERE company_id=?) WHERE company_id=? AND dataset_group=?',(cid,cid,a.group))
   checkpoint(db,out,failures)
   print(s,status,flush=True)
-  if failures>=5:break
- install_wide(db);print(checkpoint(db,out,failures))
+  if failures>=5:outcome='ACQUISITION_FAILED';break
+ install_wide(db);report=checkpoint(db,out,failures);report.update(outcome=outcome,selected=len(selected),attempted=attempted,allocated_bytes=db.storage());(out/'summary.json').write_text(json.dumps(report,indent=2));print(report)
  if failures>=5:raise RuntimeError('Repeated failures; retry deferred')
 if __name__=='__main__':main()
