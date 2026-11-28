@@ -88,9 +88,9 @@ def run(db,limit=20,minutes=35,recovery_limit=5,yf=None):
    if not ticker:raise ValueError('NO_CONFIGURED_INDEX_SOURCE')
    stage='PAYLOAD_LOOKUP'
    if kind=='COMPANY' and pid is None:
-    old=db.run("SELECT e.payload_id,p.payload FROM dm_snapshot s JOIN ft_extended e ON e.snapshot_id=s.id JOIN dm_payload p ON p.id=e.payload_id WHERE s.company_id=? AND s.ticker=? AND s.status='COMPLETE' AND e.module='prices' ORDER BY s.id DESC LIMIT 1",(i,ticker))
+    old=db.run("SELECT e.payload_id,hex(p.payload) FROM dm_snapshot s JOIN ft_extended e ON e.snapshot_id=s.id JOIN dm_payload p ON p.id=e.payload_id WHERE s.company_id=? AND s.ticker=? AND s.status='COMPLETE' AND e.module='prices' ORDER BY s.id DESC LIMIT 1",(i,ticker))
     if old:
-     try:rows=parse(json.loads(gzip.decompress(old[0][1])))
+     try:rows=parse(json.loads(gzip.decompress(bytes.fromhex(old[0][1]))))
      except Exception as exc:report['warnings'].append({**info,'stage':'PAYLOAD_PARSE','error':diagnostic(exc)})
      else:
       stage='PAYLOAD_PUBLICATION'; report['changed']+=publish(db,kind,i,[r for r in rows if r[0]>=cutoff],'YAHOO:'+ticker);pid=old[0][0]

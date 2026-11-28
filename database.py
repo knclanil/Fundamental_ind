@@ -1,5 +1,9 @@
 import os,sqlite3,requests,base64
 from pathlib import Path
+def decode_blob(value):
+ # Hrana may return unpadded standard Base64. Restore only missing padding.
+ return base64.b64decode(value + '=' * (-len(value) % 4), validate=True)
+
 class DB:
  def __init__(self,path=None):
   self.url=os.getenv('TURSO_DATABASE_URL') if path is None else None; self.token=os.getenv('TURSO_AUTH_TOKEN'); self.local=None; self.session=requests.Session()
@@ -19,7 +23,7 @@ class DB:
    return {'type':'text','value':str(x)}
   r=self.session.post(self.url,headers={'Authorization':'Bearer '+self.token},json={'requests':[{'type':'execute','stmt':{'sql':sql,'args':[val(x) for x in args]}},{'type':'close'}]},timeout=60);r.raise_for_status();res=r.json()['results'][0]
   if res['type']=='error':raise RuntimeError(res['error']['message'])
-  return [[base64.b64decode(v['base64']) if v['type']=='blob' else int(v['value']) if v['type']=='integer' else float(v['value']) if v['type']=='float' else v.get('value') for v in row] for row in res['response']['result']['rows']]
+  return [[decode_blob(v['base64']) if v['type']=='blob' else int(v['value']) if v['type']=='integer' else float(v['value']) if v['type']=='float' else v.get('value') for v in row] for row in res['response']['result']['rows']]
  def init(self):
   names={r[0] for r in self.run("SELECT name FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'")}
   if names and 'misc_schema_version' not in names:raise RuntimeError('Nonempty legacy database; refusing initialization')
