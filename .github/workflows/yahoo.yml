@@ -28,7 +28,7 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: python -m pytest -q tests
-      - run: if [ "$DATASET_GROUP" = MEMBERSHIP ]; then python membership.py; else python fleet.py --limit 50 --minutes 40 --group "$DATASET_GROUP"; fi
+      - run: if [ "$DATASET_GROUP" = MEMBERSHIP ]; then python membership.py && python intelligence.py; else python fleet.py --limit 50 --minutes 40 --group "$DATASET_GROUP"; fi
         env:
           DATASET_GROUP: ${{ inputs.dataset_group || (github.event.schedule == '52 2,8,14,20 * * *' && 'MEMBERSHIP') || (github.event.schedule == '37 * * * *' && 'EXTENDED') || 'CORE' }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
@@ -40,4 +40,5 @@ jobs:
           path: |
             reports/fleet/
             reports/membership/
+            reports/intelligence/
           retention-days: 14

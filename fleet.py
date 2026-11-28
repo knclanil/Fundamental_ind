@@ -100,6 +100,7 @@ def main():
  p=argparse.ArgumentParser();p.add_argument('--limit',type=int,default=50);p.add_argument('--minutes',type=int,default=40);p.add_argument('--group',choices=['CORE','EXTENDED'],default='CORE');p.add_argument('--init-only',action='store_true');a=p.parse_args();deadline=time.monotonic()+a.minutes*60
  if not os.getenv('TURSO_DATABASE_URL') or not os.getenv('TURSO_AUTH_TOKEN'):raise RuntimeError('Remote credentials required')
  db=DB();db.init();install_wide(db)
+ db.run("UPDATE misc_queue SET status='PARTIAL',next_retry=NULL WHERE status='RUNNING' AND julianday(last_attempt)<julianday('now','-2 hours')")
  if a.init_only:return
  import yfinance as yf
  out=Path('reports/fleet');out.mkdir(parents=True,exist_ok=True);failures=0
@@ -107,7 +108,7 @@ def main():
  if members is not None:seed(db,members)
  checkpoint(db,out,failures)
  for cid,s in db.run("SELECT c.id,c.symbol FROM misc_queue q JOIN dm_company c ON c.id=q.company_id WHERE c.active=1 AND q.dataset_group=? AND (q.next_retry IS NULL OR q.next_retry<=?) AND (q.dataset_group='EXTENDED' OR q.last_success IS NULL OR q.last_success<?) ORDER BY COALESCE(q.last_attempt,''),c.symbol LIMIT ?",(a.group,now(),(datetime.now(timezone.utc)-timedelta(days=7)).isoformat(),a.limit)):
-  if time.monotonic()>=deadline or db.occupied()>=380000000:break
+  if time.monotonic()>=deadline or db.occupied()>=380000000 or db.storage()>=400000000:break
   cid=int(cid);db.run("UPDATE misc_queue SET status='RUNNING',attempts=attempts+1,last_attempt=? WHERE company_id=? AND dataset_group=?",(now(),cid,a.group))
   cov=[]
   try:

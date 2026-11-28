@@ -14,6 +14,7 @@ class DB:
   def val(x):
    if x is None:return {'type':'null'}
    if isinstance(x,bytes):return {'type':'blob','base64':base64.b64encode(x).decode()}
+   if isinstance(x,float):return {'type':'float','value':x}
    if isinstance(x,int):return {'type':'integer','value':str(x)}
    return {'type':'text','value':str(x)}
   r=self.session.post(self.url,headers={'Authorization':'Bearer '+self.token},json={'requests':[{'type':'execute','stmt':{'sql':sql,'args':[val(x) for x in args]}},{'type':'close'}]},timeout=60);r.raise_for_status();res=r.json()['results'][0]

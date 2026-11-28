@@ -35,3 +35,10 @@ Limitations: no independent completeness verification, official weights, economi
 
 ## 7.0.1 source resilience
 CORE/EXTENDED retry official CSV three times, normalize header whitespace, and continue existing active queued universe on source failure only when 500–510 unique identities exist. No reseeding on fallback. See reports/fleet/universe_status.json. Empty databases fail closed. Membership never publishes fallback holdings.
+
+## 8.0 candidate (partial implementation)
+Based on 7.0.1. Additive views installed by `python intelligence.py` after MEMBERSHIP. INR crore only; current latest published financial observations, unknown reporting basis, not independently verified. Aggregate views use current membership even for earlier fiscal periods (not backtests); coverage counts accompany sums, net margin uses paired positive revenue and available earnings. Growth uses exact prior-year date; ROE/ROA annual average opening/closing balances. Index overlap lists intersecting pairs only. Sector summaries are sector index summaries, not economic sector aggregates. No production data altered during development.
+
+Stale RUNNING recovery after two hours assumes serialized workflows. Membership guard checks allocated and occupied bytes; existing allocation near 400 MB warrants monitoring. Source response metadata logged on successful HTTP responses. No new sources guessed. All 32 original sources published in supplied production artifact (6), not independently verified.
+
+Not completed: official economic hierarchy, weight history, discovery/fallback expansion, independent financial verification, banking metrics, historical valuation, market analytics, factor scoring, backup/restore, full downstream export, full financial coverage audit. New views have only local smoke tests, not production performance or numerical validation. Do not label this candidate production-ready. Deploy only after reviewing these limitations; retain existing secrets and database. Existing schema version remains 6.0 for compatibility.

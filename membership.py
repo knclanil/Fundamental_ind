@@ -32,7 +32,7 @@ def parse(text,expected=None,previous=None):
  return result
 
 def guard(db):
- if db.occupied()>=380_000_000: raise RuntimeError('Storage safety threshold')
+ if db.occupied()>=380_000_000 or db.storage()>=400_000_000: raise RuntimeError('Storage safety threshold')
 
 def publish(db,iid,sid,text,expected=None):
  guard(db); stamp=now()
@@ -85,7 +85,9 @@ def main():
    if time.monotonic()>deadline:break
    guard(db);db.run('UPDATE dm_data_source SET last_attempt=? WHERE id=?',(now(),sid))
    try:
-    r=requests.get(url,headers={'User-Agent':'Mozilla/5.0','Accept':'text/csv,*/*'},timeout=45);r.raise_for_status();status=publish(db,iid,sid,r.text,expected)
+    r=requests.get(url,headers={'User-Agent':'Mozilla/5.0','Accept':'text/csv,*/*'},timeout=45);r.raise_for_status()
+    print(json.dumps({'source_id':sid,'http_status':r.status_code,'content_type':r.headers.get('Content-Type'),'bytes':len(r.content),'final_url':r.url}),flush=True)
+    status=publish(db,iid,sid,r.content.decode('utf-8-sig'),expected)
     db.run('UPDATE dm_data_source SET status=?,last_success=?,error=NULL WHERE id=?',(status,now(),sid))
    except Exception as e:
     db.run("UPDATE dm_data_source SET status='FAILED',error=? WHERE id=?",(str(e)[:1000],sid))
